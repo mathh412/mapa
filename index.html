@@ -148,6 +148,7 @@
         let ceusData = []; 
         let contagemSub = {};
         let contagemDist = {};
+        let primeiraRenderizacao = true; // controla o auto-ajuste de enquadramento inicial
 
         // NOVO: guarda a mensagem do Power BI caso ela chegue antes do GeoJSON estar pronto
         let mensagemPendente = null;
@@ -349,6 +350,14 @@
                             layer.bindTooltip(nomeSub || "Subprefeitura", { sticky: true, className: 'dark-tooltip' });
                         }
                     }).addTo(map);
+
+                    // Na primeira vez, ajusta o zoom/posição automaticamente para
+                    // enquadrar TODAS as subprefeituras, com uma margem de respiro,
+                    // evitando que qualquer área fique cortada nas bordas.
+                    if (primeiraRenderizacao) {
+                        map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [20, 20] });
+                        primeiraRenderizacao = false;
+                    }
                 })
                 .catch(err => console.error("Erro ao renderizar Subprefeituras:", err));
         }
@@ -423,7 +432,7 @@
                 badgesDist.removeFrom(map);
                 subprefeiturasLayer.addTo(map);
                 badgesSub.addTo(map);
-                map.setView([-23.5505, -46.6333], 10);
+                map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [20, 20] });
             }
         });
     </script>
