@@ -36,10 +36,19 @@
             text-align: center; line-height: 26px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.5);
         }
+
+        /* Painel de diagnóstico temporário - remover depois que tudo funcionar */
+        #debugPanel {
+            position: absolute; top: 8px; left: 8px; z-index: 9999;
+            background: rgba(0,0,0,0.85); color: #0f0; font-family: monospace;
+            font-size: 12px; padding: 8px 10px; border-radius: 6px;
+            max-width: 90%; white-space: pre-wrap; pointer-events: none;
+        }
     </style>
 </head>
 <body>
 
+    <div id="debugPanel">Iniciando...</div>
     <div id="map"></div>
 
     <!-- JS do Leaflet e do Turf.js (Matemática Espacial) -->
@@ -118,6 +127,18 @@
         let mensagemPendente = null;
         let geoJSONPronto = false;
 
+        // Painel de diagnóstico visível (temporário)
+        const debugLinhas = [];
+        function debugLog(msg) {
+            debugLinhas.push(new Date().toLocaleTimeString() + " - " + msg);
+            const painel = document.getElementById('debugPanel');
+            if (painel) painel.textContent = debugLinhas.slice(-10).join("\n");
+        }
+        window.addEventListener('error', function(e) {
+            debugLog("ERRO JS: " + e.message);
+        });
+        debugLog("Script iniciado, aguardando listener de mensagem...");
+
         function criarBadgeIcon(numero) {
             return L.divIcon({
                 className: 'custom-icon', html: `<div class="badge-ceu">${numero}</div>`,
@@ -167,15 +188,18 @@
                 const resDist = await fetch(urlDistritos);
                 distritosGeoJSON = await resDist.json();
                 geoJSONPronto = true;
+                debugLog("GeoJSON de distritos carregado (" + distritosGeoJSON.features.length + " features)");
 
                 renderizarSubprefeituras(); // Desenha a base imediatamente
 
                 // Se a mensagem do Power BI já chegou antes disso, processa agora
                 if (mensagemPendente) {
+                    debugLog("Processando mensagem que estava pendente (" + mensagemPendente.length + " itens)");
                     processarDadosCEUs(mensagemPendente);
                     mensagemPendente = null;
                 }
             } catch(e) {
+                debugLog("ERRO ao carregar GeoJSON: " + e.message);
                 console.error("Erro ao carregar arquivos GeoJSON locais:", e);
             }
         }
@@ -186,15 +210,22 @@
         // 4. ESCUTAR MENSAGEM DO POWER BI
         // ==========================================
         window.addEventListener('message', function(event) {
+            debugLog("Mensagem recebida de origem: " + event.origin + " | tipo: " + typeof event.data + " | é array: " + Array.isArray(event.data));
+
             // Aceita os dados dinâmicos do Power BI
             if (event.data && Array.isArray(event.data)) {
+                debugLog("Mensagem válida com " + event.data.length + " CEUs");
                 if (geoJSONPronto) {
                     // GeoJSON já carregado: processa direto
                     processarDadosCEUs(event.data);
+                    debugLog("Dados processados. Sub: " + Object.keys(contagemSub).length + " | Dist: " + Object.keys(contagemDist).length);
                 } else {
                     // GeoJSON ainda não carregou: guarda para processar depois
                     mensagemPendente = event.data;
+                    debugLog("GeoJSON ainda não pronto - mensagem guardada");
                 }
+            } else {
+                debugLog("Mensagem ignorada (não é array válido)");
             }
         });
 
