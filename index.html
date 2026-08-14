@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Interativo - São Paulo</title>
+    
+    <!-- CSS do Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body, html { 
+            margin: 0; padding: 0; height: 100%; width: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+        }
+        
+        #map { 
+            width: 100%; height: 100%; background-color: #121212;
+            cursor: default; /* Muda o cursor padrão do fundo */
+        }
+
+        .leaflet-tooltip {
+            background-color: #2b2b2b; color: #ffffff;
+            border: 1px solid #444; font-weight: bold;
+        }
+        .leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before,
+        .leaflet-tooltip-left:before, .leaflet-tooltip-right:before {
+            border-color: transparent !important;
+        }
+
+        /* Estilo para a bolinha com os números de CEUs */
+        .badge-ceu {
+            background-color: #e74c3c; color: white; font-weight: bold;
+            font-size: 14px; border: 2px solid #fff; border-radius: 50%;
+            text-align: center; line-height: 26px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <!-- JS do Leaflet e do Turf.js (Matemática Espacial) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
+    <script>
+        // 1. Dicionário de Mapeamento (De-Para)
+        const deParaDistritos = {
+            "Água Rasa": "Mooca", "Alto de Pinheiros": "Pinheiros", "Anhanguera": "Perus",
+            "Aricanduva": "Aricanduva", "Artur Alvim": "Penha", "Barra Funda": "Lapa",
+            "Bela Vista": "Sé", "Belém": "Mooca", "Bom Retiro": "Sé", "Brás": "Mooca",
+            "Brasilândia": "Freguesia do Ó", "Butantã": "Butantã", "Cachoeirinha": "Casa Verde",
+            "Cambuci": "Sé", "Campo Belo": "Santo Amaro", "Campo Grande": "Santo Amaro",
+            "Campo Limpo": "Campo Limpo", "Cangaiba": "Penha", "Capão Redondo": "Campo Limpo",
+            "Carrão": "Aricanduva", "Casa Verde": "Casa Verde", "Cidade Ademar": "Cidade Ademar",
+            "Cidade Dutra": "Capela do Socorro", "Cidade Líder": "Itaquera", "Cidade Tiradentes": "Cidade Tiradentes",
+            "Consolação": "Sé", "Cursino": "Ipiranga", "Ermelino Matarazzo": "Ermelino Matarazzo",
+            "Freguesia do Ó": "Freguesia do Ó", "Grajaú": "Capela do Socorro", "Guaianases": "Guaianases",
+            "Iguatemi": "São Mateus", "Ipiranga": "Ipiranga", "Itaim Bibi": "Pinheiros",
+            "Itaim Paulista": "Itaim Paulista", "Itaquera": "Itaquera", "Jabaquara": "Jabaquara",
+            "Jaçanã": "Jaçanã", "Jaguara": "Lapa", "Jaguaré": "Lapa", "Jaraguá": "Pirituba",
+            "Jardim Ângela": "MBoi Mirim", "Jardim Helena": "São Miguel", "Jardim Paulista": "Pinheiros",
+            "Jardim São Luís": "MBoi Mirim", "José Bonifácio": "Itaquera", "Lajeado": "Guaianases",
+            "Lapa": "Lapa", "Liberdade": "Sé", "Limão": "Casa Verde", "Mandaqui": "Santana",
+            "Marsilac": "Parelheiros", "Moema": "Vila Mariana", "Mooca": "Mooca", "Morumbi": "Butantã",
+            "Parelheiros": "Parelheiros", "Pari": "Mooca", "Parque do Carmo": "Itaquera",
+            "Pedreira": "Cidade Ademar", "Penha": "Penha", "Perdizes": "Lapa", "Perus": "Perus",
+            "Pinheiros": "Pinheiros", "Pirituba": "Pirituba", "Ponte Rasa": "Ermelino Matarazzo",
+            "Raposo Tavares": "Butantã", "República": "Sé", "Rio Pequeno": "Butantã",
+            "Sacomã": "Ipiranga", "Santa Cecília": "Sé", "Santana": "Santana",
+            "Santo Amaro": "Santo Amaro", "São Domingos": "Pirituba", "São Lucas": "Vila Prudente",
+            "São Mateus": "São Mateus", "São Miguel": "São Miguel", "São Rafael": "São Mateus",
+            "Sapopemba": "Sapopemba", "Saúde": "Vila Mariana", "Sé": "Sé",
+            "Socorro": "Capela do Socorro", "Tatuapé": "Mooca", "Tremembé": "Jaçanã",
+            "Tucuruvi": "Santana", "Vila Andrade": "Campo Limpo", "Vila Curuçá": "Itaim Paulista",
+            "Vila Formosa": "Aricanduva", "Vila Guilherme": "Vila Maria-Vila Guilherme",
+            "Vila Jacuí": "São Miguel", "Vila Leopoldina": "Lapa", "Vila Maria": "Vila Maria-Vila Guilherme",
+            "Vila Mariana": "Vila Mariana", "Vila Matilde": "Penha", "Vila Medeiros": "Vila Maria-Vila Guilherme",
+            "Vila Prudente": "Vila Prudente", "Vila Sônia": "Butantã"
+        };
+
+        // 2. Inicialização do Mapa Base
+        const map = L.map('map').setView([-23.5505, -46.6333], 10);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+        }).addTo(map);
+
+        // Os caminhos que funcionam para você
+        const urlSubprefeituras = '../subprefeituras.geojson'; 
+        const urlDistritos = '../distritos.geojson';
+
+        const estiloSubprefeitura = { color: "#4fc3f7", weight: 1.5, fillColor: "#0288d1", fillOpacity: 0.3 };
+        const estiloSubHover = { weight: 3, fillOpacity: 0.5 };
+        const estiloDistrito = { color: "#ffb74d", weight: 1.5, fillColor: "#f57c00", fillOpacity: 0.4 };
+        const estiloDistHover = { weight: 3, fillOpacity: 0.6 };
+
+        // Variáveis de Estado
+        let currentState = 0; // 0: Sub, 1: Dist, 2: Pins
+        let boundsSubprefeituraAtual = null;
+        let subprefeituraAtual = null;
+
+        let subprefeiturasLayer, distritosLayer;
+        let distritosGeoJSON = null; 
+        
+        let badgesSub = L.layerGroup().addTo(map);
+        let badgesDist = L.layerGroup();
+        let pinsCeu = L.layerGroup();
+        
+        let ceusData = []; 
+        let contagemSub = {};
+        let contagemDist = {};
+
+        function criarBadgeIcon(numero) {
+            return L.divIcon({
+                className: 'custom-icon', html: `<div class="badge-ceu">${numero}</div>`,
+                iconSize: [30, 30], iconAnchor: [15, 15] 
+            });
+        }
+
+        // 3. Inicializar Mapa PRIMEIRO (Carrega o visual Base)
+        async function carregarArquivosGeoJSON() {
+            try {
+                // Guarda os distritos na memória para cálculos do Turf.js
+                const resDist = await fetch(urlDistritos);
+                distritosGeoJSON = await resDist.json();
+
+                renderizarSubprefeituras(); // Desenha a base imediatamente
+            } catch(e) {
+                console.error("Erro ao carregar arquivos GeoJSON locais:", e);
+            }
+        }
+
+        carregarArquivosGeoJSON();
+
+        // ==========================================
+        // 4. ESCUTAR MENSAGEM DO POWER BI
+        // ==========================================
+        window.addEventListener('message', function(event) {
+            // Aceita os dados dinâmicos do Power BI
+            if (event.data && Array.isArray(event.data)) {
+                ceusData = event.data;
+                
+                // Zera contagens (útil se usuário alterar filtros no painel)
+                contagemSub = {};
+                contagemDist = {};
+
+                if(distritosGeoJSON) {
+                    ceusData.forEach(ceu => {
+                        // Verifica se as coordenadas são válidas
+                        if(ceu.lat && ceu.lng) {
+                            const pt = turf.point([ceu.lng, ceu.lat]); 
+                            for (let feature of distritosGeoJSON.features) {
+                                if (turf.booleanPointInPolygon(pt, feature)) {
+                                    const nomeDist = feature.properties.nm_distrito_municipal;
+                                    ceu.distrito = nomeDist;
+                                    ceu.subprefeitura = deParaDistritos[nomeDist];
+                                    
+                                    contagemDist[nomeDist] = (contagemDist[nomeDist] || 0) + 1;
+                                    if (ceu.subprefeitura) {
+                                        contagemSub[ceu.subprefeitura] = (contagemSub[ceu.subprefeitura] || 0) + 1;
+                                    }
+                                    break; 
+                                }
+                            }
+                        }
+                    });
+
+                    // Atualiza a tela atual com as novas bolinhas e cálculos
+                    if (currentState === 0) {
+                        renderizarSubprefeituras();
+                    } else if (currentState === 1) {
+                        renderizarDistritos(subprefeituraAtual);
+                    }
+                }
+            }
+        });
+
+        // 5. Funções de Renderização
+        function renderizarSubprefeituras() {
+            fetch(urlSubprefeituras)
+                .then(res => res.json())
+                .then(data => {
+                    if (subprefeiturasLayer) { map.removeLayer(subprefeiturasLayer); }
+                    badgesSub.clearLayers();
+
+                    subprefeiturasLayer = L.geoJSON(data, {
+                        style: estiloSubprefeitura,
+                        onEachFeature: function (feature, layer) {
+                            layer.on('mouseover', () => layer.setStyle(estiloSubHover));
+                            layer.on('mouseout', () => subprefeiturasLayer.resetStyle(layer));
+
+                            const nomeSub = feature.properties.name; 
+
+                            // Adiciona a Bolinha (se a contagem já foi feita pelo PBI)
+                            const totalCeus = contagemSub[nomeSub] || 0;
+                            if (totalCeus > 0) {
+                                const centro = layer.getBounds().getCenter();
+                                L.marker(centro, { icon: criarBadgeIcon(totalCeus), interactive: false }).addTo(badgesSub);
+                            }
+
+                            layer.on('click', function (e) {
+                                L.DomEvent.stopPropagation(e);
+                                subprefeituraAtual = nomeSub;
+                                boundsSubprefeituraAtual = e.target.getBounds();
+                                
+                                map.removeLayer(subprefeiturasLayer);
+                                badgesSub.removeFrom(map);
+                                map.fitBounds(boundsSubprefeituraAtual);
+
+                                renderizarDistritos(nomeSub);
+                            });
+                            
+                            layer.bindTooltip(nomeSub || "Subprefeitura", { sticky: true, className: 'dark-tooltip' });
+                        }
+                    }).addTo(map);
+                })
+                .catch(err => console.error("Erro ao renderizar Subprefeituras:", err));
+        }
+
+        function renderizarDistritos(nomeSubprefeituraClicada) {
+            currentState = 1;
+            if (distritosLayer) { map.removeLayer(distritosLayer); }
+            badgesDist.clearLayers();
+
+            distritosLayer = L.geoJSON(distritosGeoJSON, {
+                filter: function(feature) {
+                    const nomeDistrito = feature.properties.nm_distrito_municipal; 
+                    const subprefeituraDesteDistrito = deParaDistritos[nomeDistrito];
+                    return subprefeituraDesteDistrito === nomeSubprefeituraClicada; 
+                },
+                style: estiloDistrito,
+                onEachFeature: function (feature, layer) {
+                    layer.on('mouseover', () => layer.setStyle(estiloDistHover));
+                    layer.on('mouseout', () => distritosLayer.resetStyle(layer));
+
+                    const nomeDistrito = feature.properties.nm_distrito_municipal;
+                    
+                    // Adiciona a Bolinha no Distrito
+                    const totalCeus = contagemDist[nomeDistrito] || 0;
+                    if (totalCeus > 0) {
+                        const centro = layer.getBounds().getCenter();
+                        L.marker(centro, { icon: criarBadgeIcon(totalCeus), interactive: false }).addTo(badgesDist);
+                    }
+
+                    layer.on('click', function (e) {
+                        L.DomEvent.stopPropagation(e);
+                        if (totalCeus > 0) {
+                            mostrarPins(nomeDistrito, e.target.getBounds());
+                        } else {
+                            map.fitBounds(e.target.getBounds());
+                        }
+                    });
+                    
+                    layer.bindTooltip(nomeDistrito || "Distrito", { sticky: true });
+                }
+            }).addTo(map);
+            badgesDist.addTo(map);
+        }
+
+        // 7. Mostrar Pins (CEUs)
+        function mostrarPins(nomeDistrito, boundsDistrito) {
+            currentState = 2;
+            badgesDist.removeFrom(map);
+            map.fitBounds(boundsDistrito);
+            pinsCeu.clearLayers();
+
+            const ceusDesteDistrito = ceusData.filter(ceu => ceu.distrito === nomeDistrito);
+
+            ceusDesteDistrito.forEach(ceu => {
+                const marker = L.marker([ceu.lat, ceu.lng]).addTo(pinsCeu);
+                marker.bindPopup(`<strong style="color:#000;">${ceu.nome}</strong><br><span style="color:#333;">${ceu.distrito}</span>`);
+            });
+
+            pinsCeu.addTo(map);
+        }
+
+        // 8. Voltar ao clicar no fundo
+        map.on('click', function () {
+            if (currentState === 2) {
+                currentState = 1;
+                map.removeLayer(pinsCeu);
+                badgesDist.addTo(map);
+                map.fitBounds(boundsSubprefeituraAtual);
+            } else if (currentState === 1) {
+                currentState = 0;
+                if (distritosLayer) { map.removeLayer(distritosLayer); }
+                badgesDist.removeFrom(map);
+                subprefeiturasLayer.addTo(map);
+                badgesSub.addTo(map);
+                map.setView([-23.5505, -46.6333], 10);
+            }
+        });
+    </script>
+</body>
+</html>
