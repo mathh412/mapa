@@ -114,11 +114,50 @@
         let contagemSub = {};
         let contagemDist = {};
 
+        // NOVO: guarda a mensagem do Power BI caso ela chegue antes do GeoJSON estar pronto
+        let mensagemPendente = null;
+        let geoJSONPronto = false;
+
         function criarBadgeIcon(numero) {
             return L.divIcon({
                 className: 'custom-icon', html: `<div class="badge-ceu">${numero}</div>`,
                 iconSize: [30, 30], iconAnchor: [15, 15] 
             });
+        }
+
+        // Processa os dados dos CEUs: calcula distrito/subprefeitura e contagens
+        function processarDadosCEUs(dados) {
+            ceusData = dados;
+            contagemSub = {};
+            contagemDist = {};
+
+            if (!distritosGeoJSON) return;
+
+            ceusData.forEach(ceu => {
+                if (ceu.lat && ceu.lng) {
+                    const pt = turf.point([ceu.lng, ceu.lat]); 
+                    for (let feature of distritosGeoJSON.features) {
+                        if (turf.booleanPointInPolygon(pt, feature)) {
+                            const nomeDist = feature.properties.nm_distrito_municipal;
+                            ceu.distrito = nomeDist;
+                            ceu.subprefeitura = deParaDistritos[nomeDist];
+                            
+                            contagemDist[nomeDist] = (contagemDist[nomeDist] || 0) + 1;
+                            if (ceu.subprefeitura) {
+                                contagemSub[ceu.subprefeitura] = (contagemSub[ceu.subprefeitura] || 0) + 1;
+                            }
+                            break; 
+                        }
+                    }
+                }
+            });
+
+            // Redesenha a tela atual com as bolinhas atualizadas
+            if (currentState === 0) {
+                renderizarSubprefeituras();
+            } else if (currentState === 1) {
+                renderizarDistritos(subprefeituraAtual);
+            }
         }
 
         // 3. Inicializar Mapa PRIMEIRO (Carrega o visual Base)
@@ -127,8 +166,15 @@
                 // Guarda os distritos na memória para cálculos do Turf.js
                 const resDist = await fetch(urlDistritos);
                 distritosGeoJSON = await resDist.json();
+                geoJSONPronto = true;
 
                 renderizarSubprefeituras(); // Desenha a base imediatamente
+
+                // Se a mensagem do Power BI já chegou antes disso, processa agora
+                if (mensagemPendente) {
+                    processarDadosCEUs(mensagemPendente);
+                    mensagemPendente = null;
+                }
             } catch(e) {
                 console.error("Erro ao carregar arquivos GeoJSON locais:", e);
             }
@@ -142,39 +188,12 @@
         window.addEventListener('message', function(event) {
             // Aceita os dados dinâmicos do Power BI
             if (event.data && Array.isArray(event.data)) {
-                ceusData = event.data;
-                
-                // Zera contagens (útil se usuário alterar filtros no painel)
-                contagemSub = {};
-                contagemDist = {};
-
-                if(distritosGeoJSON) {
-                    ceusData.forEach(ceu => {
-                        // Verifica se as coordenadas são válidas
-                        if(ceu.lat && ceu.lng) {
-                            const pt = turf.point([ceu.lng, ceu.lat]); 
-                            for (let feature of distritosGeoJSON.features) {
-                                if (turf.booleanPointInPolygon(pt, feature)) {
-                                    const nomeDist = feature.properties.nm_distrito_municipal;
-                                    ceu.distrito = nomeDist;
-                                    ceu.subprefeitura = deParaDistritos[nomeDist];
-                                    
-                                    contagemDist[nomeDist] = (contagemDist[nomeDist] || 0) + 1;
-                                    if (ceu.subprefeitura) {
-                                        contagemSub[ceu.subprefeitura] = (contagemSub[ceu.subprefeitura] || 0) + 1;
-                                    }
-                                    break; 
-                                }
-                            }
-                        }
-                    });
-
-                    // Atualiza a tela atual com as novas bolinhas e cálculos
-                    if (currentState === 0) {
-                        renderizarSubprefeituras();
-                    } else if (currentState === 1) {
-                        renderizarDistritos(subprefeituraAtual);
-                    }
+                if (geoJSONPronto) {
+                    // GeoJSON já carregado: processa direto
+                    processarDadosCEUs(event.data);
+                } else {
+                    // GeoJSON ainda não carregou: guarda para processar depois
+                    mensagemPendente = event.data;
                 }
             }
         });
