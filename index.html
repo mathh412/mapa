@@ -153,12 +153,15 @@
             ceusData = dados;
             contagemSub = {};
             contagemDist = {};
+            const naoLocalizados = [];
 
             if (!distritosGeoJSON) return;
 
             ceusData.forEach(ceu => {
                 if (ceu.lat && ceu.lng) {
                     const pt = turf.point([ceu.lng, ceu.lat]); 
+                    let encontrado = false;
+
                     for (let feature of distritosGeoJSON.features) {
                         if (turf.booleanPointInPolygon(pt, feature)) {
                             const nomeDist = feature.properties.nm_distrito_municipal;
@@ -169,11 +172,51 @@
                             if (ceu.subprefeitura) {
                                 contagemSub[ceu.subprefeitura] = (contagemSub[ceu.subprefeitura] || 0) + 1;
                             }
+                            encontrado = true;
                             break; 
                         }
                     }
+
+                    // Fallback: se o ponto não caiu em nenhum polígono (ex: borda do GeoJSON
+                    // simplificada, coordenada muito próxima do limite), atribui ao distrito
+                    // mais próximo por distância até o centro do polígono.
+                    if (!encontrado) {
+                        let menorDistancia = Infinity;
+                        let distritoMaisProximo = null;
+
+                        for (let feature of distritosGeoJSON.features) {
+                            try {
+                                const centro = turf.centroid(feature);
+                                const dist = turf.distance(pt, centro);
+                                if (dist < menorDistancia) {
+                                    menorDistancia = dist;
+                                    distritoMaisProximo = feature.properties.nm_distrito_municipal;
+                                }
+                            } catch (e) {
+                                // ignora features com geometria inválida
+                            }
+                        }
+
+                        if (distritoMaisProximo) {
+                            ceu.distrito = distritoMaisProximo;
+                            ceu.subprefeitura = deParaDistritos[distritoMaisProximo];
+
+                            contagemDist[distritoMaisProximo] = (contagemDist[distritoMaisProximo] || 0) + 1;
+                            if (ceu.subprefeitura) {
+                                contagemSub[ceu.subprefeitura] = (contagemSub[ceu.subprefeitura] || 0) + 1;
+                            } else {
+                                naoLocalizados.push(ceu.nome + " (distrito '" + distritoMaisProximo + "' sem subprefeitura no de-para)");
+                            }
+                        } else {
+                            naoLocalizados.push(ceu.nome + " (fallback não encontrou nenhum distrito válido)");
+                        }
+                    }
+                } else {
+                    naoLocalizados.push((ceu.nome || "?") + " (lat/lng ausente ou inválido)");
                 }
             });
+
+            mostrarAvisoNaoLocalizados(naoLocalizados);
 
             // Redesenha a tela atual com as bolinhas atualizadas
             if (currentState === 0) {
@@ -181,6 +224,21 @@
             } else if (currentState === 1) {
                 renderizarDistritos(subprefeituraAtual);
             }
+        }
+
+        function mostrarAvisoNaoLocalizados(lista) {
+            let aviso = document.getElementById('avisoNaoLocalizados');
+            if (lista.length === 0) {
+                if (aviso) aviso.remove();
+                return;
+            }
+            if (!aviso) {
+                aviso = document.createElement('div');
+                aviso.id = 'avisoNaoLocalizados';
+                aviso.style.cssText = 'position:absolute; top:8px; left:8px; z-index:9999; background:#c0392b; color:#fff; font-family:sans-serif; font-size:12px; padding:8px 10px; border-radius:6px; max-width:80%;';
+                document.body.appendChild(aviso);
+            }
+            aviso.textContent = 'CEU(s) não localizado(s) no mapa: ' + lista.join(' | ');
         }
 
         // 3. Inicializar Mapa PRIMEIRO (Carrega o visual Base)
