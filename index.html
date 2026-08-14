@@ -227,6 +227,9 @@
         }
 
         function mostrarAvisoNaoLocalizados(lista) {
+            if (lista.length > 0) {
+                console.warn('[CEUs não localizados]', lista);
+            }
             let aviso = document.getElementById('avisoNaoLocalizados');
             if (lista.length === 0) {
                 if (aviso) aviso.remove();
@@ -255,6 +258,23 @@
                 if (mensagemPendente) {
                     processarDadosCEUs(mensagemPendente);
                     mensagemPendente = null;
+                }
+
+                // MODO TESTE: permite passar os dados direto pela URL (?dados=...)
+                // para testar no navegador sem depender do Power BI/iframe.
+                const params = new URLSearchParams(window.location.search);
+                const dadosParam = params.get('dados');
+                if (dadosParam) {
+                    try {
+                        const dadosTeste = JSON.parse(dadosParam);
+                        console.log('[MODO TESTE] Dados recebidos via URL:', dadosTeste);
+                        processarDadosCEUs(dadosTeste);
+                        console.log('[MODO TESTE] contagemSub:', contagemSub);
+                        console.log('[MODO TESTE] contagemDist:', contagemDist);
+                        console.log('[MODO TESTE] ceusData processado:', ceusData);
+                    } catch (e) {
+                        console.error('[MODO TESTE] Erro ao interpretar ?dados= da URL:', e);
+                    }
                 }
             } catch(e) {
                 console.error("Erro ao carregar arquivos GeoJSON locais:", e);
