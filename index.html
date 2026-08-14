@@ -12,11 +12,11 @@
         body, html { 
             margin: 0; padding: 0; height: 100%; width: 100%;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #121212;
+            background-color: #ededed;
         }
         
         #map { 
-            width: 100%; height: 100%; background-color: #121212;
+            width: 100%; height: 100%; background-color: #ededed;
             cursor: default; /* Muda o cursor padrão do fundo */
         }
 
@@ -31,24 +31,15 @@
 
         /* Estilo para a bolinha com os números de CEUs */
         .badge-ceu {
-            background-color: #e74c3c; color: white; font-weight: bold;
+            background-color: #F08200; color: white; font-weight: bold;
             font-size: 14px; border: 2px solid #fff; border-radius: 50%;
             text-align: center; line-height: 26px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-        }
-
-        /* Painel de diagnóstico temporário - remover depois que tudo funcionar */
-        #debugPanel {
-            position: absolute; top: 8px; left: 8px; z-index: 9999;
-            background: rgba(0,0,0,0.85); color: #0f0; font-family: monospace;
-            font-size: 12px; padding: 8px 10px; border-radius: 6px;
-            max-width: 90%; white-space: pre-wrap; pointer-events: none;
         }
     </style>
 </head>
 <body>
 
-    <div id="debugPanel">Iniciando...</div>
     <div id="map"></div>
 
     <!-- JS do Leaflet e do Turf.js (Matemática Espacial) -->
@@ -102,10 +93,32 @@
         const urlSubprefeituras = 'subprefeituras.geojson'; 
         const urlDistritos = 'distritos.geojson';
 
-        const estiloSubprefeitura = { color: "#4fc3f7", weight: 1.5, fillColor: "#0288d1", fillOpacity: 0.3 };
-        const estiloSubHover = { weight: 3, fillOpacity: 0.5 };
-        const estiloDistrito = { color: "#ffb74d", weight: 1.5, fillColor: "#f57c00", fillOpacity: 0.4 };
-        const estiloDistHover = { weight: 3, fillOpacity: 0.6 };
+        // Cor azul institucional e cor de destaque
+        const corAzul = "#00506E";
+
+        // Estilo condicional: transparente sem CEUs, azul semi-transparente com CEUs
+        function estiloSubprefeitura(feature) {
+            const nomeSub = feature.properties.name;
+            const temCeu = (contagemSub[nomeSub] || 0) > 0;
+            return temCeu
+                ? { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.35 }
+                : { color: corAzul, weight: 1, fillColor: corAzul, fillOpacity: 0 };
+        }
+        function estiloDistrito(feature) {
+            const nomeDistrito = feature.properties.nm_distrito_municipal;
+            const temCeu = (contagemDist[nomeDistrito] || 0) > 0;
+            return temCeu
+                ? { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.35 }
+                : { color: corAzul, weight: 1, fillColor: corAzul, fillOpacity: 0 };
+        }
+        function estiloSubHover(feature) {
+            const base = estiloSubprefeitura(feature);
+            return { ...base, weight: 3, fillOpacity: Math.max(base.fillOpacity, 0.15) + 0.15 };
+        }
+        function estiloDistHover(feature) {
+            const base = estiloDistrito(feature);
+            return { ...base, weight: 3, fillOpacity: Math.max(base.fillOpacity, 0.15) + 0.15 };
+        }
 
         // Variáveis de Estado
         let currentState = 0; // 0: Sub, 1: Dist, 2: Pins
@@ -126,18 +139,6 @@
         // NOVO: guarda a mensagem do Power BI caso ela chegue antes do GeoJSON estar pronto
         let mensagemPendente = null;
         let geoJSONPronto = false;
-
-        // Painel de diagnóstico visível (temporário)
-        const debugLinhas = [];
-        function debugLog(msg) {
-            debugLinhas.push(new Date().toLocaleTimeString() + " - " + msg);
-            const painel = document.getElementById('debugPanel');
-            if (painel) painel.textContent = debugLinhas.slice(-10).join("\n");
-        }
-        window.addEventListener('error', function(e) {
-            debugLog("ERRO JS: " + e.message);
-        });
-        debugLog("Script iniciado, aguardando listener de mensagem...");
 
         function criarBadgeIcon(numero) {
             return L.divIcon({
@@ -188,18 +189,15 @@
                 const resDist = await fetch(urlDistritos);
                 distritosGeoJSON = await resDist.json();
                 geoJSONPronto = true;
-                debugLog("GeoJSON de distritos carregado (" + distritosGeoJSON.features.length + " features)");
 
                 renderizarSubprefeituras(); // Desenha a base imediatamente
 
                 // Se a mensagem do Power BI já chegou antes disso, processa agora
                 if (mensagemPendente) {
-                    debugLog("Processando mensagem que estava pendente (" + mensagemPendente.length + " itens)");
                     processarDadosCEUs(mensagemPendente);
                     mensagemPendente = null;
                 }
             } catch(e) {
-                debugLog("ERRO ao carregar GeoJSON: " + e.message);
                 console.error("Erro ao carregar arquivos GeoJSON locais:", e);
             }
         }
@@ -210,22 +208,15 @@
         // 4. ESCUTAR MENSAGEM DO POWER BI
         // ==========================================
         window.addEventListener('message', function(event) {
-            debugLog("Mensagem recebida de origem: " + event.origin + " | tipo: " + typeof event.data + " | é array: " + Array.isArray(event.data));
-
             // Aceita os dados dinâmicos do Power BI
             if (event.data && Array.isArray(event.data)) {
-                debugLog("Mensagem válida com " + event.data.length + " CEUs");
                 if (geoJSONPronto) {
                     // GeoJSON já carregado: processa direto
                     processarDadosCEUs(event.data);
-                    debugLog("Dados processados. Sub: " + Object.keys(contagemSub).length + " | Dist: " + Object.keys(contagemDist).length);
                 } else {
                     // GeoJSON ainda não carregou: guarda para processar depois
                     mensagemPendente = event.data;
-                    debugLog("GeoJSON ainda não pronto - mensagem guardada");
                 }
-            } else {
-                debugLog("Mensagem ignorada (não é array válido)");
             }
         });
 
@@ -240,7 +231,7 @@
                     subprefeiturasLayer = L.geoJSON(data, {
                         style: estiloSubprefeitura,
                         onEachFeature: function (feature, layer) {
-                            layer.on('mouseover', () => layer.setStyle(estiloSubHover));
+                            layer.on('mouseover', () => layer.setStyle(estiloSubHover(feature)));
                             layer.on('mouseout', () => subprefeiturasLayer.resetStyle(layer));
 
                             const nomeSub = feature.properties.name; 
@@ -284,7 +275,7 @@
                 },
                 style: estiloDistrito,
                 onEachFeature: function (feature, layer) {
-                    layer.on('mouseover', () => layer.setStyle(estiloDistHover));
+                    layer.on('mouseover', () => layer.setStyle(estiloDistHover(feature)));
                     layer.on('mouseout', () => distritosLayer.resetStyle(layer));
 
                     const nomeDistrito = feature.properties.nm_distrito_municipal;
