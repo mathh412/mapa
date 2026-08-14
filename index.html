@@ -83,6 +83,18 @@
             "Vila Prudente": "Vila Prudente", "Vila Sônia": "Butantã"
         };
 
+        // Índice auxiliar em minúsculas, para buscas case-insensitive (protege contra
+        // diferenças de maiúsculas/minúsculas entre o GeoJSON e este dicionário,
+        // como aconteceu com "ITAQUERA" vindo em caixa alta).
+        const deParaDistritosLower = {};
+        for (const chave in deParaDistritos) {
+            deParaDistritosLower[chave.toLowerCase()] = deParaDistritos[chave];
+        }
+        function buscarSubprefeitura(nomeDistrito) {
+            if (!nomeDistrito) return undefined;
+            return deParaDistritos[nomeDistrito] || deParaDistritosLower[nomeDistrito.toLowerCase()];
+        }
+
         // 2. Inicialização do Mapa Base
         const map = L.map('map').setView([-23.5505, -46.6333], 10);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -166,7 +178,7 @@
                         if (turf.booleanPointInPolygon(pt, feature)) {
                             const nomeDist = feature.properties.nm_distrito_municipal;
                             ceu.distrito = nomeDist;
-                            ceu.subprefeitura = deParaDistritos[nomeDist];
+                            ceu.subprefeitura = buscarSubprefeitura(nomeDist);
                             
                             contagemDist[nomeDist] = (contagemDist[nomeDist] || 0) + 1;
                             if (ceu.subprefeitura) {
@@ -199,7 +211,7 @@
 
                         if (distritoMaisProximo) {
                             ceu.distrito = distritoMaisProximo;
-                            ceu.subprefeitura = deParaDistritos[distritoMaisProximo];
+                            ceu.subprefeitura = buscarSubprefeitura(distritoMaisProximo);
 
                             contagemDist[distritoMaisProximo] = (contagemDist[distritoMaisProximo] || 0) + 1;
                             if (ceu.subprefeitura) {
@@ -349,7 +361,7 @@
             distritosLayer = L.geoJSON(distritosGeoJSON, {
                 filter: function(feature) {
                     const nomeDistrito = feature.properties.nm_distrito_municipal; 
-                    const subprefeituraDesteDistrito = deParaDistritos[nomeDistrito];
+                    const subprefeituraDesteDistrito = buscarSubprefeitura(nomeDistrito);
                     return subprefeituraDesteDistrito === nomeSubprefeituraClicada; 
                 },
                 style: estiloDistrito,
