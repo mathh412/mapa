@@ -30,19 +30,30 @@
             border-color: transparent !important;
         }
 
+        /* Estilo 1: Bolinha Simples (Modo Detalhado) */
         .badge-ceu {
             background-color: #F08200; color: white; font-weight: bold;
             font-size: 14px; border: 2px solid #fff; border-radius: 50%;
             text-align: center; line-height: 26px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.5);
         }
+
+        /* Estilo 2: Etiqueta Dupla (Modo Gerencial) */
+        .badge-gerencial {
+            background-color: #2b2b2b; color: white; font-weight: bold;
+            font-size: 13px; border: 2px solid #fff; border-radius: 20px;
+            padding: 4px 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            display: flex; justify-content: center; gap: 8px; white-space: nowrap;
+        }
+        .icone-equip { color: #4CAF50; } 
+        .icone-parc { color: #F08200; }
     </style>
 </head>
 <body>
 
     <div id="map"></div>
 
-    <!-- JS do Leaflet e do Turf.js (Matemática Espacial) -->
+    <!-- JS do Leaflet e do Turf.js -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 
@@ -83,60 +94,24 @@
         };
 
         const deParaDistritosLower = {};
-        for (const chave in deParaDistritos) {
-            deParaDistritosLower[chave.toLowerCase()] = deParaDistritos[chave];
-        }
-
-        function buscarSubprefeitura(nomeDistrito) {
-            if (!nomeDistrito) return undefined;
-            return deParaDistritos[nomeDistrito] || deParaDistritosLower[nomeDistrito.toLowerCase()];
-        }
-
+        for (const chave in deParaDistritos) { deParaDistritosLower[chave.toLowerCase()] = deParaDistritos[chave]; }
+        function buscarSubprefeitura(nome) { return nome ? deParaDistritos[nome] || deParaDistritosLower[nome.toLowerCase()] : undefined; }
+        
         let distritosCanonicos = {};
-        function buscarNomeCanonicoDistrito(nome) {
-            if (!nome) return null;
-            return distritosCanonicos[nome.toLowerCase()] || null;
-        }
+        function buscarNomeCanonicoDistrito(nome) { return nome ? distritosCanonicos[nome.toLowerCase()] || null : null; }
 
-        // 2. Inicialização do Mapa Base
+        // 2. Map Base
         const map = L.map('map').setView([-23.5505, -46.6333], 10);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            maxZoom: 19,
-            attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-        }).addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
 
         const urlSubprefeituras = 'subprefeituras.geojson'; 
         const urlDistritos = 'distritos.geojson';
         const corAzul = "#00506E";
 
-        function estiloSubprefeitura(feature) {
-            const nomeSub = feature.properties.name;
-            const temCeu = (contagemSub[nomeSub] || 0) > 0;
-            return temCeu
-                ? { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.35 }
-                : { color: corAzul, weight: 1, fillColor: corAzul, fillOpacity: 0 };
-        }
-        function estiloDistrito(feature) {
-            const nomeDistrito = feature.properties.nm_distrito_municipal;
-            const temCeu = (contagemDist[nomeDistrito] || 0) > 0;
-            return temCeu
-                ? { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.35 }
-                : { color: corAzul, weight: 1, fillColor: corAzul, fillOpacity: 0 };
-        }
-        function estiloSubHover(feature) {
-            const base = estiloSubprefeitura(feature);
-            return { ...base, weight: 3, fillOpacity: Math.max(base.fillOpacity, 0.15) + 0.15 };
-        }
-        function estiloDistHover(feature) {
-            const base = estiloDistrito(feature);
-            return { ...base, weight: 3, fillOpacity: Math.max(base.fillOpacity, 0.15) + 0.15 };
-        }
-
         // Variáveis de Estado
         let currentState = 0; 
         let boundsSubprefeituraAtual = null;
         let subprefeituraAtual = null;
-
         let subprefeiturasLayer, distritosLayer;
         let distritosGeoJSON = null; 
         
@@ -149,278 +124,268 @@
         let contagemSub = {};
         let contagemDist = {};
         let primeiraRenderizacao = true; 
-
-        let mensagemPendente = null;
         let geoJSONPronto = false;
+        let mensagemPendente = null;
 
-        function criarBadgeIcon(numero) {
-            return L.divIcon({
-                className: 'custom-icon', html: `<div class="badge-ceu">${numero}</div>`,
-                iconSize: [30, 30], iconAnchor: [15, 15] 
-            });
+        // NOVO: Qual modo o mapa está rodando?
+        let modoVisualizacao = 'detalhado'; // pode ser 'detalhado' ou 'gerencial'
+
+        function temDadosNoLocal(stats) {
+            if (!stats) return false;
+            return (stats.total > 0) || (stats.equip > 0 || stats.parc > 0);
         }
 
-        // UNIFICADO: Processa usando Lat/Long primeiro. Se falhar ou faltar dados, usa o Distrito Direto.
+        function estiloRegiao(feature, ehSubprefeitura) {
+            const nome = ehSubprefeitura ? feature.properties.name : feature.properties.nm_distrito_municipal;
+            const stats = ehSubprefeitura ? contagemSub[nome] : contagemDist[nome];
+            const ativo = temDadosNoLocal(stats);
+            return ativo 
+                ? { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.35 }
+                : { color: corAzul, weight: 1, fillColor: corAzul, fillOpacity: 0 };
+        }
+        function estiloHover(feature, ehSubprefeitura) {
+            const base = estiloRegiao(feature, ehSubprefeitura);
+            return { ...base, weight: 3, fillOpacity: Math.max(base.fillOpacity, 0.15) + 0.15 };
+        }
+
+        // NOVO: Construtor dinâmico de Badge
+        function criarBadgeIcon(stats) {
+            if (modoVisualizacao === 'gerencial') {
+                return L.divIcon({
+                    className: 'custom-icon', 
+                    html: `
+                        <div class="badge-gerencial">
+                            <span class="icone-equip" title="Equipamentos">🏢 ${stats.equip || 0}</span>
+                            <span style="color:#666">|</span>
+                            <span class="icone-parc" title="Parcerias">🤝 ${stats.parc || 0}</span>
+                        </div>`,
+                    iconSize: [80, 30], iconAnchor: [40, 15] 
+                });
+            } else {
+                return L.divIcon({
+                    className: 'custom-icon', 
+                    html: `<div class="badge-ceu">${stats.total || 0}</div>`,
+                    iconSize: [30, 30], iconAnchor: [15, 15] 
+                });
+            }
+        }
+
+        // INTEGRAÇÃO: Lê o JSON e auto-detecta a estrutura
         function processarDadosCEUs(dados) {
             ceusData = dados;
             contagemSub = {};
             contagemDist = {};
             const naoLocalizados = [];
 
-            if (!distritosGeoJSON) return;
+            if (!distritosGeoJSON || ceusData.length === 0) return;
 
-            ceusData.forEach(ceu => {
+            // Auto-Detecção do Modo
+            if (ceusData[0].equipamentos !== undefined || ceusData[0].parcerias !== undefined) {
+                modoVisualizacao = 'gerencial';
+            } else {
+                modoVisualizacao = 'detalhado';
+            }
+
+            ceusData.forEach(dado => {
                 let nomeCanonico = null;
 
-                // TENTATIVA 1: Lat/Long via Turf.js (Prioridade Geométrica)
-                if (ceu.lat && ceu.lng) {
-                    const pt = turf.point([ceu.lng, ceu.lat]); 
-                    let encontrado = false;
-
-                    for (let feature of distritosGeoJSON.features) {
-                        if (turf.booleanPointInPolygon(pt, feature)) {
-                            nomeCanonico = feature.properties.nm_distrito_municipal;
-                            encontrado = true;
-                            break; 
+                // Processamento Modo Detalhado (Tenta Lat/Lng, se falhar tenta Distrito direto)
+                if (modoVisualizacao === 'detalhado') {
+                    if (dado.lat && dado.lng) {
+                        const pt = turf.point([dado.lng, dado.lat]); 
+                        for (let f of distritosGeoJSON.features) {
+                            if (turf.booleanPointInPolygon(pt, f)) {
+                                nomeCanonico = f.properties.nm_distrito_municipal; break; 
+                            }
+                        }
+                        if (!nomeCanonico) {
+                            let menorDist = Infinity;
+                            for (let f of distritosGeoJSON.features) {
+                                try {
+                                    const dist = turf.distance(pt, turf.centroid(f));
+                                    if (dist < menorDist) { menorDist = dist; nomeCanonico = f.properties.nm_distrito_municipal; }
+                                } catch (e) {}
+                            }
                         }
                     }
+                    if (!nomeCanonico && dado.distrito) nomeCanonico = buscarNomeCanonicoDistrito(dado.distrito);
 
-                    // Fallback Geométrico: pega o distrito mais próximo se cair um pouco fora das bordas
-                    if (!encontrado) {
-                        let menorDistancia = Infinity;
-                        for (let feature of distritosGeoJSON.features) {
-                            try {
-                                const centro = turf.centroid(feature);
-                                const dist = turf.distance(pt, centro);
-                                if (dist < menorDistancia) {
-                                    menorDistancia = dist;
-                                    nomeCanonico = feature.properties.nm_distrito_municipal;
-                                }
-                            } catch (e) {}
+                    if (nomeCanonico) {
+                        dado.distrito = nomeCanonico; 
+                        let sub = buscarSubprefeitura(nomeCanonico);
+
+                        if (!contagemDist[nomeCanonico]) contagemDist[nomeCanonico] = { total: 0 };
+                        contagemDist[nomeCanonico].total += 1;
+
+                        if (sub) {
+                            if (!contagemSub[sub]) contagemSub[sub] = { total: 0 };
+                            contagemSub[sub].total += 1;
                         }
-                    }
-                }
-
-                // TENTATIVA 2: Fallback para "Distrito Direto" se não achou por coordenadas
-                if (!nomeCanonico && ceu.distrito) {
-                    nomeCanonico = buscarNomeCanonicoDistrito(ceu.distrito);
-                }
-
-                // Aplica contagens se encontrou o distrito por qualquer método
-                if (nomeCanonico) {
-                    ceu.distrito = nomeCanonico; 
-                    ceu.subprefeitura = buscarSubprefeitura(nomeCanonico);
-
-                    contagemDist[nomeCanonico] = (contagemDist[nomeCanonico] || 0) + 1;
-                    if (ceu.subprefeitura) {
-                        contagemSub[ceu.subprefeitura] = (contagemSub[ceu.subprefeitura] || 0) + 1;
                     } else {
-                        naoLocalizados.push(`${ceu.nome || "?"} (distrito '${nomeCanonico}' sem subprefeitura no de-para)`);
+                        naoLocalizados.push(`${dado.nome || "?"}`);
                     }
-                } else {
-                    naoLocalizados.push(`${ceu.nome || "?"} (falha ao localizar por lat/long e nome direto)`);
+                } 
+                // Processamento Modo Gerencial (Agregação vinda do DAX)
+                else {
+                    if (dado.distrito) nomeCanonico = buscarNomeCanonicoDistrito(dado.distrito);
+                    
+                    if (nomeCanonico) {
+                        let sub = buscarSubprefeitura(nomeCanonico);
+                        
+                        if (!contagemDist[nomeCanonico]) contagemDist[nomeCanonico] = { equip: 0, parc: 0 };
+                        contagemDist[nomeCanonico].equip += (dado.equipamentos || 0);
+                        contagemDist[nomeCanonico].parc += (dado.parcerias || 0);
+
+                        if (sub) {
+                            if (!contagemSub[sub]) contagemSub[sub] = { equip: 0, parc: 0 };
+                            contagemSub[sub].equip += (dado.equipamentos || 0);
+                            contagemSub[sub].parc += (dado.parcerias || 0);
+                        }
+                    } else {
+                        naoLocalizados.push(`Distrito '${dado.distrito}'`);
+                    }
                 }
             });
 
-            mostrarAvisoNaoLocalizados(naoLocalizados);
+            if (naoLocalizados.length > 0) console.warn('[Não localizados]', naoLocalizados);
 
-            if (currentState === 0) { renderizarSubprefeituras(); } 
-            else if (currentState === 1) { renderizarDistritos(subprefeituraAtual); }
-        }
-
-        function mostrarAvisoNaoLocalizados(lista) {
-            if (lista.length > 0) console.warn('[CEUs não localizados]', lista);
-            let aviso = document.getElementById('avisoNaoLocalizados');
-            
-            if (lista.length === 0) {
-                if (aviso) aviso.remove();
-                return;
-            }
-            
-            if (!aviso) {
-                aviso = document.createElement('div');
-                aviso.id = 'avisoNaoLocalizados';
-                aviso.style.cssText = 'position:absolute; top:8px; left:8px; z-index:9999; background:#c0392b; color:#fff; font-family:sans-serif; font-size:12px; padding:8px 10px; border-radius:6px; max-width:80%;';
-                document.body.appendChild(aviso);
-            }
-            aviso.textContent = 'CEU(s) não localizado(s): ' + lista.join(' | ');
+            if (currentState === 0) renderizarSubprefeituras(); 
+            else if (currentState === 1) renderizarDistritos(subprefeituraAtual);
         }
 
         async function carregarArquivosGeoJSON() {
             try {
                 const resDist = await fetch(urlDistritos);
                 distritosGeoJSON = await resDist.json();
-
-                // Popula o índice de nomes canônicos para busca direta
-                distritosGeoJSON.features.forEach(feature => {
-                    const nome = feature.properties.nm_distrito_municipal;
-                    if (nome) distritosCanonicos[nome.toLowerCase()] = nome;
+                distritosGeoJSON.features.forEach(f => {
+                    if (f.properties.nm_distrito_municipal) distritosCanonicos[f.properties.nm_distrito_municipal.toLowerCase()] = f.properties.nm_distrito_municipal;
                 });
-
                 geoJSONPronto = true;
                 renderizarSubprefeituras(); 
-
-                if (mensagemPendente) {
-                    processarDadosCEUs(mensagemPendente);
-                    mensagemPendente = null;
-                }
-
-                const params = new URLSearchParams(window.location.search);
-                const dadosParam = params.get('dados');
-                if (dadosParam) {
-                    try {
-                        const dadosTeste = JSON.parse(dadosParam);
-                        processarDadosCEUs(dadosTeste);
-                    } catch (e) {
-                        console.error('[MODO TESTE] Erro:', e);
-                    }
-                }
-            } catch(e) {
-                console.error("Erro ao carregar arquivos GeoJSON locais:", e);
-            }
+                if (mensagemPendente) { processarDadosCEUs(mensagemPendente); mensagemPendente = null; }
+            } catch(e) { console.error("Erro GeoJSON:", e); }
         }
 
         carregarArquivosGeoJSON();
 
         window.addEventListener('message', function(event) {
             if (event.data && Array.isArray(event.data)) {
-                if (geoJSONPronto) {
-                    processarDadosCEUs(event.data);
-                } else {
-                    mensagemPendente = event.data;
-                }
+                if (geoJSONPronto) processarDadosCEUs(event.data);
+                else mensagemPendente = event.data;
             }
         });
 
         function renderizarSubprefeituras() {
-            fetch(urlSubprefeituras)
-                .then(res => res.json())
-                .then(data => {
-                    if (subprefeiturasLayer) { map.removeLayer(subprefeiturasLayer); }
-                    badgesSub.clearLayers();
+            fetch(urlSubprefeituras).then(res => res.json()).then(data => {
+                if (subprefeiturasLayer) map.removeLayer(subprefeiturasLayer);
+                badgesSub.clearLayers();
 
-                    subprefeiturasLayer = L.geoJSON(data, {
-                        style: estiloSubprefeitura,
-                        onEachFeature: function (feature, layer) {
-                            layer.on('mouseover', () => layer.setStyle(estiloSubHover(feature)));
-                            layer.on('mouseout', () => subprefeiturasLayer.resetStyle(layer));
+                subprefeiturasLayer = L.geoJSON(data, {
+                    style: f => estiloRegiao(f, true),
+                    onEachFeature: function (feature, layer) {
+                        layer.on('mouseover', () => layer.setStyle(estiloHover(feature, true)));
+                        layer.on('mouseout', () => subprefeiturasLayer.resetStyle(layer));
 
-                            const nomeSub = feature.properties.name; 
-                            const totalCeus = contagemSub[nomeSub] || 0;
-                            if (totalCeus > 0) {
-                                const centro = layer.getBounds().getCenter();
-                                L.marker(centro, { icon: criarBadgeIcon(totalCeus), interactive: false }).addTo(badgesSub);
-                            }
-
-                            layer.on('click', function (e) {
-                                L.DomEvent.stopPropagation(e);
-                                subprefeituraAtual = nomeSub;
-                                boundsSubprefeituraAtual = e.target.getBounds();
-                                
-                                map.removeLayer(subprefeiturasLayer);
-                                badgesSub.removeFrom(map);
-                                map.fitBounds(boundsSubprefeituraAtual);
-
-                                renderizarDistritos(nomeSub);
-                            });
-                            
-                            layer.bindTooltip(nomeSub || "Subprefeitura", { sticky: true, className: 'dark-tooltip' });
+                        const nomeSub = feature.properties.name; 
+                        const stats = contagemSub[nomeSub];
+                        if (temDadosNoLocal(stats)) {
+                            L.marker(layer.getBounds().getCenter(), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesSub);
                         }
-                    }).addTo(map);
 
-                    if (primeiraRenderizacao) {
-                        map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [20, 20] });
-                        primeiraRenderizacao = false;
+                        layer.on('click', function (e) {
+                            L.DomEvent.stopPropagation(e);
+                            subprefeituraAtual = nomeSub;
+                            boundsSubprefeituraAtual = e.target.getBounds();
+                            map.removeLayer(subprefeiturasLayer);
+                            badgesSub.removeFrom(map);
+                            map.fitBounds(boundsSubprefeituraAtual);
+                            renderizarDistritos(nomeSub);
+                        });
+                        layer.bindTooltip(nomeSub, { sticky: true, className: 'dark-tooltip' });
                     }
-                })
-                .catch(err => console.error("Erro ao renderizar Subprefeituras:", err));
+                }).addTo(map);
+
+                if (primeiraRenderizacao) { map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [20, 20] }); primeiraRenderizacao = false; }
+            });
         }
 
-        function renderizarDistritos(nomeSubprefeituraClicada) {
+        function renderizarDistritos(nomeSubClicada) {
             currentState = 1;
-            if (distritosLayer) { map.removeLayer(distritosLayer); }
+            if (distritosLayer) map.removeLayer(distritosLayer);
             badgesDist.clearLayers();
 
             distritosLayer = L.geoJSON(distritosGeoJSON, {
-                filter: function(feature) {
-                    const nomeDistrito = feature.properties.nm_distrito_municipal; 
-                    const subprefeituraDesteDistrito = buscarSubprefeitura(nomeDistrito);
-                    return subprefeituraDesteDistrito === nomeSubprefeituraClicada; 
-                },
-                style: estiloDistrito,
+                filter: f => buscarSubprefeitura(f.properties.nm_distrito_municipal) === nomeSubClicada,
+                style: f => estiloRegiao(f, false),
                 onEachFeature: function (feature, layer) {
-                    layer.on('mouseover', () => layer.setStyle(estiloDistHover(feature)));
+                    layer.on('mouseover', () => layer.setStyle(estiloHover(feature, false)));
                     layer.on('mouseout', () => distritosLayer.resetStyle(layer));
 
                     const nomeDistrito = feature.properties.nm_distrito_municipal;
-                    const totalCeus = contagemDist[nomeDistrito] || 0;
+                    const stats = contagemDist[nomeDistrito];
                     
-                    if (totalCeus > 0) {
-                        const centro = layer.getBounds().getCenter();
-                        L.marker(centro, { icon: criarBadgeIcon(totalCeus), interactive: false }).addTo(badgesDist);
+                    if (temDadosNoLocal(stats)) {
+                        L.marker(layer.getBounds().getCenter(), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesDist);
                     }
 
                     layer.on('click', function (e) {
                         L.DomEvent.stopPropagation(e);
-                        if (totalCeus > 0) {
-                            mostrarPins(nomeDistrito, e.target.getBounds());
-                        } else {
-                            map.fitBounds(e.target.getBounds());
-                        }
+                        if (temDadosNoLocal(stats)) mostrarAreaInterna(nomeDistrito, e.target.getBounds(), stats);
+                        else map.fitBounds(e.target.getBounds());
                     });
-                    
-                    layer.bindTooltip(nomeDistrito || "Distrito", { sticky: true });
+                    layer.bindTooltip(nomeDistrito, { sticky: true });
                 }
             }).addTo(map);
             badgesDist.addTo(map);
         }
 
-        // UNIFICADO: Mostra Pins (se houver coord) E abre um Popup com a Lista como complemento
-        function mostrarPins(nomeDistrito, boundsDistrito) {
+        // NOVO: Decide o que mostrar ao clicar no distrito com base no modo
+        function mostrarAreaInterna(nomeDistrito, boundsDistrito, stats) {
             currentState = 2;
             badgesDist.removeFrom(map);
             map.fitBounds(boundsDistrito);
             pinsCeu.clearLayers();
 
-            const ceusDesteDistrito = ceusData.filter(ceu => ceu.distrito === nomeDistrito);
-            let gerouPin = false;
+            if (modoVisualizacao === 'detalhado') {
+                const ceusDeste = ceusData.filter(c => c.distrito === nomeDistrito);
+                let gerouPin = false;
 
-            ceusDesteDistrito.forEach(ceu => {
-                if (ceu.lat && ceu.lng) {
-                    const marker = L.marker([ceu.lat, ceu.lng]).addTo(pinsCeu);
-                    marker.bindPopup(`<strong style="color:#000;">${ceu.nome || 'CEU'}</strong><br><span style="color:#333;">${ceu.distrito}</span>`);
-                    gerouPin = true;
+                ceusDeste.forEach(ceu => {
+                    if (ceu.lat && ceu.lng) {
+                        L.marker([ceu.lat, ceu.lng]).bindPopup(`<strong>${ceu.nome||'CEU'}</strong><br>${ceu.distrito}`).addTo(pinsCeu);
+                        gerouPin = true;
+                    }
+                });
+
+                if (gerouPin) {
+                    pinsCeu.addTo(map);
+                } else {
+                    const html = `<strong>${nomeDistrito}</strong><ul style="margin:4px 0 0 -18px;color:#333;">` + 
+                                 ceusDeste.map(c => `<li>${c.nome||'CEU'}</li>`).join('') + `</ul>`;
+                    popupAtual = L.popup({ autoClose: false, closeOnClick: false }).setLatLng(boundsDistrito.getCenter()).setContent(html).openOn(map);
                 }
-            });
-
-            if (gerouPin) {
-                pinsCeu.addTo(map);
             } else {
-                // Se nenhum CEU da área tiver coordenada, exibe a lista no centro do distrito
-                const listaHtml = 
-                    '<strong style="color:#000;">' + nomeDistrito + '</strong><br>' +
-                    '<ul style="margin:4px 0 0 -18px; padding:0; color:#333;">' +
-                    ceusDesteDistrito.map(ceu => '<li>' + (ceu.nome || 'CEU') + '</li>').join('') +
-                    '</ul>';
-
-                popupAtual = L.popup({ closeButton: true, autoClose: false, closeOnClick: false })
-                    .setLatLng(boundsDistrito.getCenter())
-                    .setContent(listaHtml)
-                    .openOn(map);
+                // No modo gerencial, exibe um resumo da área ao clicar
+                const html = `
+                    <div style="text-align:center;">
+                        <strong style="font-size:14px; color:#00506E;">${nomeDistrito}</strong><hr style="margin:5px 0;">
+                        🏢 Equipamentos: <b>${stats.equip || 0}</b><br>
+                        🤝 Parcerias: <b>${stats.parc || 0}</b>
+                    </div>`;
+                popupAtual = L.popup({ autoClose: false, closeOnClick: false }).setLatLng(boundsDistrito.getCenter()).setContent(html).openOn(map);
             }
         }
 
-        // Voltar ao clicar no fundo
         map.on('click', function () {
             if (currentState === 2) {
                 currentState = 1;
                 if (popupAtual) { map.closePopup(popupAtual); popupAtual = null; }
-                map.removeLayer(pinsCeu); // Limpa os pins, se existirem
+                map.removeLayer(pinsCeu); 
                 badgesDist.addTo(map);
                 map.fitBounds(boundsSubprefeituraAtual);
             } else if (currentState === 1) {
                 currentState = 0;
-                if (distritosLayer) { map.removeLayer(distritosLayer); }
+                if (distritosLayer) map.removeLayer(distritosLayer);
                 badgesDist.removeFrom(map);
                 subprefeiturasLayer.addTo(map);
                 badgesSub.addTo(map);
