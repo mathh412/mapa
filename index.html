@@ -18,7 +18,7 @@
         
         #map { 
             width: 100%; height: 100%; background-color: #ededed;
-            cursor: default; /* Muda o cursor padrão do fundo */
+            cursor: default;
         }
 
         .leaflet-tooltip {
@@ -30,7 +30,6 @@
             border-color: transparent !important;
         }
 
-        /* Estilo para a bolinha com os números de CEUs */
         .badge-ceu {
             background-color: #F08200; color: white; font-weight: bold;
             font-size: 14px; border: 2px solid #fff; border-radius: 50%;
@@ -83,16 +82,20 @@
             "Vila Prudente": "Vila Prudente", "Vila Sônia": "Butantã"
         };
 
-        // Índice auxiliar em minúsculas, para buscas case-insensitive (protege contra
-        // diferenças de maiúsculas/minúsculas entre o GeoJSON e este dicionário,
-        // como aconteceu com "ITAQUERA" vindo em caixa alta).
         const deParaDistritosLower = {};
         for (const chave in deParaDistritos) {
             deParaDistritosLower[chave.toLowerCase()] = deParaDistritos[chave];
         }
+
         function buscarSubprefeitura(nomeDistrito) {
             if (!nomeDistrito) return undefined;
             return deParaDistritos[nomeDistrito] || deParaDistritosLower[nomeDistrito.toLowerCase()];
+        }
+
+        let distritosCanonicos = {};
+        function buscarNomeCanonicoDistrito(nome) {
+            if (!nome) return null;
+            return distritosCanonicos[nome.toLowerCase()] || null;
         }
 
         // 2. Inicialização do Mapa Base
@@ -102,14 +105,10 @@
             attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
         }).addTo(map);
 
-        // Os caminhos que funcionam para você
         const urlSubprefeituras = 'subprefeituras.geojson'; 
         const urlDistritos = 'distritos.geojson';
-
-        // Cor azul institucional e cor de destaque
         const corAzul = "#00506E";
 
-        // Estilo condicional: transparente sem CEUs, azul semi-transparente com CEUs
         function estiloSubprefeitura(feature) {
             const nomeSub = feature.properties.name;
             const temCeu = (contagemSub[nomeSub] || 0) > 0;
@@ -134,7 +133,7 @@
         }
 
         // Variáveis de Estado
-        let currentState = 0; // 0: Sub, 1: Dist, 2: Pins
+        let currentState = 0; 
         let boundsSubprefeituraAtual = null;
         let subprefeituraAtual = null;
 
@@ -144,13 +143,13 @@
         let badgesSub = L.layerGroup().addTo(map);
         let badgesDist = L.layerGroup();
         let pinsCeu = L.layerGroup();
+        let popupAtual = null; 
         
         let ceusData = []; 
         let contagemSub = {};
         let contagemDist = {};
-        let primeiraRenderizacao = true; // controla o auto-ajuste de enquadramento inicial
+        let primeiraRenderizacao = true; 
 
-        // NOVO: guarda a mensagem do Power BI caso ela chegue antes do GeoJSON estar pronto
         let mensagemPendente = null;
         let geoJSONPronto = false;
 
@@ -161,7 +160,7 @@
             });
         }
 
-        // Processa os dados dos CEUs: calcula distrito/subprefeitura e contagens
+        // UNIFICADO: Processa usando Lat/Long primeiro. Se falhar ou faltar dados, usa o Distrito Direto.
         function processarDadosCEUs(dados) {
             ceusData = dados;
             contagemSub = {};
@@ -171,122 +170,109 @@
             if (!distritosGeoJSON) return;
 
             ceusData.forEach(ceu => {
+                let nomeCanonico = null;
+
+                // TENTATIVA 1: Lat/Long via Turf.js (Prioridade Geométrica)
                 if (ceu.lat && ceu.lng) {
                     const pt = turf.point([ceu.lng, ceu.lat]); 
                     let encontrado = false;
 
                     for (let feature of distritosGeoJSON.features) {
                         if (turf.booleanPointInPolygon(pt, feature)) {
-                            const nomeDist = feature.properties.nm_distrito_municipal;
-                            ceu.distrito = nomeDist;
-                            ceu.subprefeitura = buscarSubprefeitura(nomeDist);
-                            
-                            contagemDist[nomeDist] = (contagemDist[nomeDist] || 0) + 1;
-                            if (ceu.subprefeitura) {
-                                contagemSub[ceu.subprefeitura] = (contagemSub[ceu.subprefeitura] || 0) + 1;
-                            }
+                            nomeCanonico = feature.properties.nm_distrito_municipal;
                             encontrado = true;
                             break; 
                         }
                     }
 
-                    // Fallback: se o ponto não caiu em nenhum polígono (ex: borda do GeoJSON
-                    // simplificada, coordenada muito próxima do limite), atribui ao distrito
-                    // mais próximo por distância até o centro do polígono.
+                    // Fallback Geométrico: pega o distrito mais próximo se cair um pouco fora das bordas
                     if (!encontrado) {
                         let menorDistancia = Infinity;
-                        let distritoMaisProximo = null;
-
                         for (let feature of distritosGeoJSON.features) {
                             try {
                                 const centro = turf.centroid(feature);
                                 const dist = turf.distance(pt, centro);
                                 if (dist < menorDistancia) {
                                     menorDistancia = dist;
-                                    distritoMaisProximo = feature.properties.nm_distrito_municipal;
+                                    nomeCanonico = feature.properties.nm_distrito_municipal;
                                 }
-                            } catch (e) {
-                                // ignora features com geometria inválida
-                            }
-                        }
-
-                        if (distritoMaisProximo) {
-                            ceu.distrito = distritoMaisProximo;
-                            ceu.subprefeitura = buscarSubprefeitura(distritoMaisProximo);
-
-                            contagemDist[distritoMaisProximo] = (contagemDist[distritoMaisProximo] || 0) + 1;
-                            if (ceu.subprefeitura) {
-                                contagemSub[ceu.subprefeitura] = (contagemSub[ceu.subprefeitura] || 0) + 1;
-                            } else {
-                                naoLocalizados.push(ceu.nome + " (distrito '" + distritoMaisProximo + "' sem subprefeitura no de-para)");
-                            }
-                        } else {
-                            naoLocalizados.push(ceu.nome + " (fallback não encontrou nenhum distrito válido)");
+                            } catch (e) {}
                         }
                     }
+                }
+
+                // TENTATIVA 2: Fallback para "Distrito Direto" se não achou por coordenadas
+                if (!nomeCanonico && ceu.distrito) {
+                    nomeCanonico = buscarNomeCanonicoDistrito(ceu.distrito);
+                }
+
+                // Aplica contagens se encontrou o distrito por qualquer método
+                if (nomeCanonico) {
+                    ceu.distrito = nomeCanonico; 
+                    ceu.subprefeitura = buscarSubprefeitura(nomeCanonico);
+
+                    contagemDist[nomeCanonico] = (contagemDist[nomeCanonico] || 0) + 1;
+                    if (ceu.subprefeitura) {
+                        contagemSub[ceu.subprefeitura] = (contagemSub[ceu.subprefeitura] || 0) + 1;
+                    } else {
+                        naoLocalizados.push(`${ceu.nome || "?"} (distrito '${nomeCanonico}' sem subprefeitura no de-para)`);
+                    }
                 } else {
-                    naoLocalizados.push((ceu.nome || "?") + " (lat/lng ausente ou inválido)");
+                    naoLocalizados.push(`${ceu.nome || "?"} (falha ao localizar por lat/long e nome direto)`);
                 }
             });
 
             mostrarAvisoNaoLocalizados(naoLocalizados);
 
-            // Redesenha a tela atual com as bolinhas atualizadas
-            if (currentState === 0) {
-                renderizarSubprefeituras();
-            } else if (currentState === 1) {
-                renderizarDistritos(subprefeituraAtual);
-            }
+            if (currentState === 0) { renderizarSubprefeituras(); } 
+            else if (currentState === 1) { renderizarDistritos(subprefeituraAtual); }
         }
 
         function mostrarAvisoNaoLocalizados(lista) {
-            if (lista.length > 0) {
-                console.warn('[CEUs não localizados]', lista);
-            }
+            if (lista.length > 0) console.warn('[CEUs não localizados]', lista);
             let aviso = document.getElementById('avisoNaoLocalizados');
+            
             if (lista.length === 0) {
                 if (aviso) aviso.remove();
                 return;
             }
+            
             if (!aviso) {
                 aviso = document.createElement('div');
                 aviso.id = 'avisoNaoLocalizados';
                 aviso.style.cssText = 'position:absolute; top:8px; left:8px; z-index:9999; background:#c0392b; color:#fff; font-family:sans-serif; font-size:12px; padding:8px 10px; border-radius:6px; max-width:80%;';
                 document.body.appendChild(aviso);
             }
-            aviso.textContent = 'CEU(s) não localizado(s) no mapa: ' + lista.join(' | ');
+            aviso.textContent = 'CEU(s) não localizado(s): ' + lista.join(' | ');
         }
 
-        // 3. Inicializar Mapa PRIMEIRO (Carrega o visual Base)
         async function carregarArquivosGeoJSON() {
             try {
-                // Guarda os distritos na memória para cálculos do Turf.js
                 const resDist = await fetch(urlDistritos);
                 distritosGeoJSON = await resDist.json();
+
+                // Popula o índice de nomes canônicos para busca direta
+                distritosGeoJSON.features.forEach(feature => {
+                    const nome = feature.properties.nm_distrito_municipal;
+                    if (nome) distritosCanonicos[nome.toLowerCase()] = nome;
+                });
+
                 geoJSONPronto = true;
+                renderizarSubprefeituras(); 
 
-                renderizarSubprefeituras(); // Desenha a base imediatamente
-
-                // Se a mensagem do Power BI já chegou antes disso, processa agora
                 if (mensagemPendente) {
                     processarDadosCEUs(mensagemPendente);
                     mensagemPendente = null;
                 }
 
-                // MODO TESTE: permite passar os dados direto pela URL (?dados=...)
-                // para testar no navegador sem depender do Power BI/iframe.
                 const params = new URLSearchParams(window.location.search);
                 const dadosParam = params.get('dados');
                 if (dadosParam) {
                     try {
                         const dadosTeste = JSON.parse(dadosParam);
-                        console.log('[MODO TESTE] Dados recebidos via URL:', dadosTeste);
                         processarDadosCEUs(dadosTeste);
-                        console.log('[MODO TESTE] contagemSub:', contagemSub);
-                        console.log('[MODO TESTE] contagemDist:', contagemDist);
-                        console.log('[MODO TESTE] ceusData processado:', ceusData);
                     } catch (e) {
-                        console.error('[MODO TESTE] Erro ao interpretar ?dados= da URL:', e);
+                        console.error('[MODO TESTE] Erro:', e);
                     }
                 }
             } catch(e) {
@@ -296,23 +282,16 @@
 
         carregarArquivosGeoJSON();
 
-        // ==========================================
-        // 4. ESCUTAR MENSAGEM DO POWER BI
-        // ==========================================
         window.addEventListener('message', function(event) {
-            // Aceita os dados dinâmicos do Power BI
             if (event.data && Array.isArray(event.data)) {
                 if (geoJSONPronto) {
-                    // GeoJSON já carregado: processa direto
                     processarDadosCEUs(event.data);
                 } else {
-                    // GeoJSON ainda não carregou: guarda para processar depois
                     mensagemPendente = event.data;
                 }
             }
         });
 
-        // 5. Funções de Renderização
         function renderizarSubprefeituras() {
             fetch(urlSubprefeituras)
                 .then(res => res.json())
@@ -327,8 +306,6 @@
                             layer.on('mouseout', () => subprefeiturasLayer.resetStyle(layer));
 
                             const nomeSub = feature.properties.name; 
-
-                            // Adiciona a Bolinha (se a contagem já foi feita pelo PBI)
                             const totalCeus = contagemSub[nomeSub] || 0;
                             if (totalCeus > 0) {
                                 const centro = layer.getBounds().getCenter();
@@ -351,9 +328,6 @@
                         }
                     }).addTo(map);
 
-                    // Na primeira vez, ajusta o zoom/posição automaticamente para
-                    // enquadrar TODAS as subprefeituras, com uma margem de respiro,
-                    // evitando que qualquer área fique cortada nas bordas.
                     if (primeiraRenderizacao) {
                         map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [20, 20] });
                         primeiraRenderizacao = false;
@@ -379,9 +353,8 @@
                     layer.on('mouseout', () => distritosLayer.resetStyle(layer));
 
                     const nomeDistrito = feature.properties.nm_distrito_municipal;
-                    
-                    // Adiciona a Bolinha no Distrito
                     const totalCeus = contagemDist[nomeDistrito] || 0;
+                    
                     if (totalCeus > 0) {
                         const centro = layer.getBounds().getCenter();
                         L.marker(centro, { icon: criarBadgeIcon(totalCeus), interactive: false }).addTo(badgesDist);
@@ -402,7 +375,7 @@
             badgesDist.addTo(map);
         }
 
-        // 7. Mostrar Pins (CEUs)
+        // UNIFICADO: Mostra Pins (se houver coord) E abre um Popup com a Lista como complemento
         function mostrarPins(nomeDistrito, boundsDistrito) {
             currentState = 2;
             badgesDist.removeFrom(map);
@@ -410,20 +383,39 @@
             pinsCeu.clearLayers();
 
             const ceusDesteDistrito = ceusData.filter(ceu => ceu.distrito === nomeDistrito);
+            let gerouPin = false;
 
             ceusDesteDistrito.forEach(ceu => {
-                const marker = L.marker([ceu.lat, ceu.lng]).addTo(pinsCeu);
-                marker.bindPopup(`<strong style="color:#000;">${ceu.nome}</strong><br><span style="color:#333;">${ceu.distrito}</span>`);
+                if (ceu.lat && ceu.lng) {
+                    const marker = L.marker([ceu.lat, ceu.lng]).addTo(pinsCeu);
+                    marker.bindPopup(`<strong style="color:#000;">${ceu.nome || 'CEU'}</strong><br><span style="color:#333;">${ceu.distrito}</span>`);
+                    gerouPin = true;
+                }
             });
 
-            pinsCeu.addTo(map);
+            if (gerouPin) {
+                pinsCeu.addTo(map);
+            } else {
+                // Se nenhum CEU da área tiver coordenada, exibe a lista no centro do distrito
+                const listaHtml = 
+                    '<strong style="color:#000;">' + nomeDistrito + '</strong><br>' +
+                    '<ul style="margin:4px 0 0 -18px; padding:0; color:#333;">' +
+                    ceusDesteDistrito.map(ceu => '<li>' + (ceu.nome || 'CEU') + '</li>').join('') +
+                    '</ul>';
+
+                popupAtual = L.popup({ closeButton: true, autoClose: false, closeOnClick: false })
+                    .setLatLng(boundsDistrito.getCenter())
+                    .setContent(listaHtml)
+                    .openOn(map);
+            }
         }
 
-        // 8. Voltar ao clicar no fundo
+        // Voltar ao clicar no fundo
         map.on('click', function () {
             if (currentState === 2) {
                 currentState = 1;
-                map.removeLayer(pinsCeu);
+                if (popupAtual) { map.closePopup(popupAtual); popupAtual = null; }
+                map.removeLayer(pinsCeu); // Limpa os pins, se existirem
                 badgesDist.addTo(map);
                 map.fitBounds(boundsSubprefeituraAtual);
             } else if (currentState === 1) {
