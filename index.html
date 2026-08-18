@@ -38,12 +38,15 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.5);
         }
 
-        /* Estilo 2: Etiqueta Dupla (Modo Gerencial) */
+        /* Estilo 2: Etiqueta Dupla (Modo Gerencial) - TAMANHO REDUZIDO */
         .badge-gerencial {
             background-color: #2b2b2b; color: white; font-weight: bold;
-            font-size: 13px; border: 2px solid #fff; border-radius: 20px;
-            padding: 4px 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-            display: flex; justify-content: center; gap: 8px; white-space: nowrap;
+            font-size: 11px; /* Fonte menor */
+            border: 1.5px solid #fff; border-radius: 20px;
+            padding: 2px 6px; /* Bordas mais enxutas */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            display: flex; justify-content: center; gap: 5px; /* Menos espaçamento interno */
+            white-space: nowrap;
         }
         .icone-equip { color: #4CAF50; } 
         .icone-parc { color: #F08200; }
@@ -100,8 +103,8 @@
         let distritosCanonicos = {};
         function buscarNomeCanonicoDistrito(nome) { return nome ? distritosCanonicos[nome.toLowerCase()] || null : null; }
 
-        // 2. Map Base
-        const map = L.map('map').setView([-23.5505, -46.6333], 10);
+        // 2. Map Base (Nível inicial de zoom definido, mas sobreposto pelo fitBounds)
+        const map = L.map('map').setView([-23.5505, -46.6333], 11);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
 
         const urlSubprefeituras = 'subprefeituras.geojson'; 
@@ -127,7 +130,6 @@
         let geoJSONPronto = false;
         let mensagemPendente = null;
 
-        // NOVO: Qual modo o mapa está rodando?
         let modoVisualizacao = 'detalhado'; // pode ser 'detalhado' ou 'gerencial'
 
         function temDadosNoLocal(stats) {
@@ -148,7 +150,6 @@
             return { ...base, weight: 3, fillOpacity: Math.max(base.fillOpacity, 0.15) + 0.15 };
         }
 
-        // NOVO: Construtor dinâmico de Badge
         function criarBadgeIcon(stats) {
             if (modoVisualizacao === 'gerencial') {
                 return L.divIcon({
@@ -159,7 +160,9 @@
                             <span style="color:#666">|</span>
                             <span class="icone-parc" title="Parcerias">🤝 ${stats.parc || 0}</span>
                         </div>`,
-                    iconSize: [80, 30], iconAnchor: [40, 15] 
+                    // DIMENSÕES REDUZIDAS para acompanhar o novo CSS
+                    iconSize: [66, 24], 
+                    iconAnchor: [33, 12] 
                 });
             } else {
                 return L.divIcon({
@@ -170,7 +173,6 @@
             }
         }
 
-        // INTEGRAÇÃO: Lê o JSON e auto-detecta a estrutura
         function processarDadosCEUs(dados) {
             ceusData = dados;
             contagemSub = {};
@@ -189,7 +191,6 @@
             ceusData.forEach(dado => {
                 let nomeCanonico = null;
 
-                // Processamento Modo Detalhado (Tenta Lat/Lng, se falhar tenta Distrito direto)
                 if (modoVisualizacao === 'detalhado') {
                     if (dado.lat && dado.lng) {
                         const pt = turf.point([dado.lng, dado.lat]); 
@@ -225,7 +226,6 @@
                         naoLocalizados.push(`${dado.nome || "?"}`);
                     }
                 } 
-                // Processamento Modo Gerencial (Agregação vinda do DAX)
                 else {
                     if (dado.distrito) nomeCanonico = buscarNomeCanonicoDistrito(dado.distrito);
                     
@@ -305,7 +305,12 @@
                     }
                 }).addTo(map);
 
-                if (primeiraRenderizacao) { map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [20, 20] }); primeiraRenderizacao = false; }
+                // CONTROLE DE ZOOM NA INICIALIZAÇÃO
+                if (primeiraRenderizacao) { 
+                    map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [20, 20] }); 
+                    map.zoomIn(1); // Aproxima 1 nível mantendo o enquadramento centralizado
+                    primeiraRenderizacao = false; 
+                }
             });
         }
 
@@ -339,7 +344,6 @@
             badgesDist.addTo(map);
         }
 
-        // NOVO: Decide o que mostrar ao clicar no distrito com base no modo
         function mostrarAreaInterna(nomeDistrito, boundsDistrito, stats) {
             currentState = 2;
             badgesDist.removeFrom(map);
@@ -365,7 +369,6 @@
                     popupAtual = L.popup({ autoClose: false, closeOnClick: false }).setLatLng(boundsDistrito.getCenter()).setContent(html).openOn(map);
                 }
             } else {
-                // No modo gerencial, exibe um resumo da área ao clicar
                 const html = `
                     <div style="text-align:center;">
                         <strong style="font-size:14px; color:#00506E;">${nomeDistrito}</strong><hr style="margin:5px 0;">
@@ -389,7 +392,10 @@
                 badgesDist.removeFrom(map);
                 subprefeiturasLayer.addTo(map);
                 badgesSub.addTo(map);
+                
+                // Reaplica o zoom inicial ao voltar para a visualização principal
                 map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [20, 20] });
+                map.zoomIn(1);
             }
         });
     </script>
