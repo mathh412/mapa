@@ -308,7 +308,7 @@
                 // CONTROLE DE ZOOM NA INICIALIZAÇÃO
                 if (primeiraRenderizacao) { 
                     map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [0, 0] }); 
-                    //map.zoomIn(0.5); // Aproxima 1 nível mantendo o enquadramento centralizado
+                    map.zoomIn(0.1); // Aproxima 1 nível mantendo o enquadramento centralizado
                     primeiraRenderizacao = false; 
                 }
             });
@@ -395,7 +395,7 @@
                 
                 // Reaplica o zoom inicial ao voltar para a visualização principal
                 map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [0, 0] });
-                //map.zoomIn(1);
+                map.zoomIn(0.1);
             }
         });
     </script>
