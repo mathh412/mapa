@@ -148,7 +148,7 @@
             const map = L.map('map').setView([-23.5505, -46.6333], 11);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri', 
-                maxZoom: 16 // Nível seguro na América do Sul
+                maxZoom: 16 // Nível seguro ajustado na América do Sul
             }).addTo(map);
 
             const corAzul = "#00506E";
@@ -348,9 +348,9 @@
 
                 perimetrosLayer.addTo(map); blocosLayer.addTo(map);
                 
-                // MÁGICA FINAL DO ZOOM (Impede o erro da tela cinza travando no zoom 15)
+                // MÁGICA FINAL DO ZOOM AJUSTADA PARA O NÍVEL MÁXIMO 16
                 boundsLocalAtual = camadaPerimetro.getBounds();
-                map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 15 });
+                map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 16 });
             }
 
             // =====================================================================
