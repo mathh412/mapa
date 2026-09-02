@@ -3,28 +3,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mapa Interativo - São Paulo (Filtro e Auto-Zoom)</title>
+    <title>Mapa Interativo - São Paulo (Multigrupos e Auto-Zoom)</title>
     
+    <!-- CSS do Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #ededed; overflow: hidden; }
-        #map { width: 100%; height: 100%; background-color: #ededed; cursor: default; }
-        .leaflet-tooltip { background-color: #2b2b2b; color: #ffffff; border: 1px solid #444; font-weight: bold; border-radius: 4px; padding: 4px 8px; }
-        .leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before, .leaflet-tooltip-left:before, .leaflet-tooltip-right:before { border-color: transparent !important; }
-        .badge-local { background-color: #F08200; color: white; font-weight: bold; font-size: 14px; border: 2px solid #fff; border-radius: 50%; text-align: center; line-height: 26px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
-        .custom-svg-pin { background: transparent; border: none; }
-        .tooltip-hover-local { background-color: #00506E; color: #ffffff; border: 1px solid #fff; font-weight: bold; font-size: 12px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.4); }
-        .tooltip-hover-local:before { border-top-color: #00506E !important; }
-        .popup-blocos { max-height: 250px; overflow-y: auto; font-size: 12px; padding-right: 5px; color: #333; }
-        .popup-blocos ul { padding-left: 16px; margin-top: 5px; margin-bottom: 0; }
-        .popup-blocos li { margin-bottom: 3px; }
+        body, html { 
+            margin: 0; padding: 0; height: 100%; width: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #ededed;
+            overflow: hidden;
+        }
+        
+        #map { 
+            width: 100%; height: 100%; background-color: #ededed;
+            cursor: default;
+        }
+
+        .leaflet-tooltip {
+            background-color: #2b2b2b; color: #ffffff;
+            border: 1px solid #444; font-weight: bold;
+            border-radius: 4px; padding: 4px 8px;
+        }
+        .leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before,
+        .leaflet-tooltip-left:before, .leaflet-tooltip-right:before {
+            border-color: transparent !important;
+        }
+
+        .badge-local {
+            background-color: #F08200; color: white; font-weight: bold;
+            font-size: 14px; border: 2px solid #fff; border-radius: 50%;
+            text-align: center; line-height: 26px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        .badge-gerencial {
+            background-color: #2b2b2b; color: white; font-weight: bold;
+            font-size: 11px;
+            border: 1.5px solid #fff; border-radius: 20px;
+            padding: 2px 6px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            display: flex; justify-content: center; gap: 5px;
+            white-space: nowrap;
+        }
+
+        .custom-svg-pin {
+            background: transparent;
+            border: none;
+        }
+
+        .tooltip-hover-local {
+            background-color: #00506E;
+            color: #ffffff;
+            border: 1px solid #fff;
+            font-weight: bold;
+            font-size: 12px;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+        }
+        .tooltip-hover-local:before {
+            border-top-color: #00506E !important;
+        }
+
+        .popup-blocos {
+            max-height: 250px;
+            overflow-y: auto;
+            font-size: 12px;
+            padding-right: 5px;
+            color: #333;
+        }
+        .popup-blocos ul {
+            padding-left: 16px;
+            margin-top: 5px;
+            margin-bottom: 0;
+        }
+        .popup-blocos li {
+            margin-bottom: 3px;
+        }
+        
         .popup-blocos::-webkit-scrollbar { width: 5px; }
         .popup-blocos::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
         .popup-blocos::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
         .popup-blocos::-webkit-scrollbar-thumb:hover { background: #555; }
-        
-        #loading { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(237, 237, 237, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 16px; color: #00506E; font-weight: bold; text-align: center; padding: 20px;}
+
+        /* Tela de Loading inicial */
+        #loading {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(237, 237, 237, 0.95); z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-size: 16px; color: #00506E; font-weight: bold; text-align: center; padding: 20px;
+        }
     </style>
 </head>
 <body>
@@ -32,27 +101,37 @@
     <div id="loading">Carregando dados geográficos da nuvem...</div>
     <div id="map"></div>
 
+    <!-- JS do Leaflet e do Turf.js -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 
     <script>
         try {
             // =====================================================================
-            // 1. CAPTURA DOS PARÂMETROS DE GRUPO E LOCAL
+            // 1. CAPTURA DOS PARÂMETROS E NORMALIZAÇÃO DE TEXTOS
             // =====================================================================
             const urlParams = new URLSearchParams(window.location.search);
             const grupoParam = urlParams.get('grupo'); 
-            const localParam = urlParams.get('local'); // Novo Parâmetro de Filtro
-            
-            const grupos = grupoParam ? grupoParam.toLowerCase().split(',').map(g => g.trim()).filter(g => g) : [];
-            const locaisFiltrados = localParam ? localParam.toLowerCase().split(',').map(l => l.trim()).filter(l => l) : [];
+            const localParam = urlParams.get('local');
 
+            // Função mágica para remover acentos e padronizar textos
+            function normalizarTexto(texto) {
+                if (!texto) return '';
+                return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+            }
+            
+            // Fatiamento dos parâmetros da URL
+            const grupos = grupoParam ? grupoParam.toLowerCase().split(',').map(g => g.trim()).filter(g => g) : [];
+            const locaisFiltrados = localParam ? localParam.split(',').map(l => normalizarTexto(l)).filter(l => l) : [];
+
+            // Base de dados no GitHub
             const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
             const urlSubprefeituras = baseUrl + 'divisaoadm/subprefeituras.geojson';
             const urlDistritos = baseUrl + 'divisaoadm/distritos.geojson';
 
             let subprefeiturasGeoJSON, distritosGeoJSON, geojsonPerimetros, geojsonBlocos;
 
+            // Conexão Assíncrona Segura
             async function fetchSeguro(url) {
                 if (!url) return { type: "FeatureCollection", features: [] };
                 try {
@@ -68,6 +147,7 @@
             const promessasPerimetros = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + g + '/perimetros.geojson'));
             const promessasBlocos = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + g + '/blocos.geojson'));
 
+            // Executa os downloads simultaneamente
             Promise.all([
                 Promise.all(promessasBase),
                 Promise.all(promessasPerimetros),
@@ -77,22 +157,21 @@
                 subprefeiturasGeoJSON = sub;
                 distritosGeoJSON = dist;
 
-                // MERGE E FILTRO DINÂMICO DE PERÍMETROS
+                // MERGE E FILTRO DE PERÍMETROS
                 let featuresPerimetros = [];
                 arrayPerimetros.forEach(geo => {
                     if (geo && geo.features) featuresPerimetros = featuresPerimetros.concat(geo.features);
                 });
                 
-                // Se houver filtro de local, mantemos apenas os requisitados
                 if (locaisFiltrados.length > 0) {
                     featuresPerimetros = featuresPerimetros.filter(f => {
-                        const nomeEquip = (f.properties.nm_equipamento || '').toLowerCase().trim();
-                        return locaisFiltrados.includes(nomeEquip);
+                        const nomeEquipNormalizado = normalizarTexto(f.properties.nm_equipamento);
+                        return locaisFiltrados.includes(nomeEquipNormalizado);
                     });
                 }
                 geojsonPerimetros = { type: "FeatureCollection", features: featuresPerimetros };
 
-                // MERGE E FILTRO DINÂMICO DE BLOCOS
+                // MERGE E FILTRO DE BLOCOS
                 let featuresBlocos = [];
                 arrayBlocos.forEach(geo => {
                     if (geo && geo.features) featuresBlocos = featuresBlocos.concat(geo.features);
@@ -100,28 +179,34 @@
 
                 if (locaisFiltrados.length > 0) {
                     featuresBlocos = featuresBlocos.filter(f => {
-                        const nomeEquip = (f.properties.nm_equipamento || '').toLowerCase().trim();
-                        return locaisFiltrados.includes(nomeEquip);
+                        const nomeEquipNormalizado = normalizarTexto(f.properties.nm_equipamento);
+                        return locaisFiltrados.includes(nomeEquipNormalizado);
                     });
                 }
                 geojsonBlocos = { type: "FeatureCollection", features: featuresBlocos };
                 
+                // Oculta a tela de loading
                 const loadingEl = document.getElementById('loading');
                 if (loadingEl) loadingEl.style.display = 'none';
                 
+                // Dispara o motor do mapa
                 inicializarSistema();
             }).catch(err => {
                 document.getElementById('loading').innerHTML = `<span style="color:#C62828;">Erro ao processar arquivos da nuvem:<br>${err.message}</span>`;
+                console.error(err);
             });
 
         } catch(fatalErr) {
             document.getElementById('loading').innerHTML = `<span style="color:#C62828;">Erro Crítico no Script:<br>${fatalErr.message}</span>`;
+            console.error(fatalErr);
         }
 
         // =====================================================================
-        // 2. SISTEMA CENTRAL DO MAPA
+        // 2. SISTEMA CENTRAL DO MAPA E AUTO-ZOOM
         // =====================================================================
         function inicializarSistema() {
+            
+            // Turf.js: Associa pontos a distritos caso venham vazios
             if (distritosGeoJSON.features && distritosGeoJSON.features.length > 0 && 
                 geojsonPerimetros.features && geojsonPerimetros.features.length > 0) {
                 geojsonPerimetros.features.forEach(local => {
@@ -391,10 +476,10 @@
                 else if (currentState === 1) { currentState = 0; if (distritosLayer) map.removeLayer(distritosLayer); badgesDist.removeFrom(map); subprefeiturasLayer.addTo(map); badgesSub.addTo(map); map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [0, 0] }); map.zoomIn(0.1); }
             });
 
-            processarDadosOffline(); // Desenha a base geral primeiro
+            processarDadosOffline(); // Renderiza o mapa geral primeiro
 
             // =====================================================================
-            // 3. INTELIGÊNCIA DE AUTO-ZOOM (GATILHO AUTOMÁTICO)
+            // 3. INTELIGÊNCIA DE AUTO-ZOOM
             // =====================================================================
             if (geojsonPerimetros.features && geojsonPerimetros.features.length === 1) {
                 const featureUnica = geojsonPerimetros.features[0];
@@ -403,22 +488,19 @@
                 const subUnica = buscarSubprefeitura(distUnico);
 
                 if (distUnico && subUnica) {
-                    // Simula que o usuário clicou até lá para manter a integridade do "Voltar"
                     subprefeituraAtual = subUnica;
                     distritoAtual = distUnico;
 
-                    // Guarda as bordas para quando o usuário clicar para fazer "zoom out"
                     const featSub = subprefeiturasGeoJSON.features.find(x => x.properties.name === subUnica);
                     if (featSub) boundsSubprefeituraAtual = L.geoJSON(featSub).getBounds();
 
                     const featDist = distritosGeoJSON.features.find(x => x.properties.nm_distrito_municipal === distUnico);
                     if (featDist) boundsDistritoAtual = L.geoJSON(featDist).getBounds();
 
-                    // Limpa a tela inicial (Nível 0)
                     if (subprefeiturasLayer) map.removeLayer(subprefeiturasLayer);
                     badgesSub.removeFrom(map);
 
-                    // Chama diretamente o Perímetro (Nível 3)
+                    // Pula etapas e vai direto para o zoom local
                     mostrarPerimetroLocal(nomeLocalUnico, featureUnica);
                 }
             }
