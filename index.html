@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Interativo - São Paulo (Genérico Dinâmico)</title>
+    
+    <!-- CSS do Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body, html { 
+            margin: 0; padding: 0; height: 100%; width: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #ededed;
+            overflow: hidden;
+        }
+        
+        #map { 
+            width: 100%; height: 100%; background-color: #ededed;
+            cursor: default;
+        }
+
+        .leaflet-tooltip {
+            background-color: #2b2b2b; color: #ffffff;
+            border: 1px solid #444; font-weight: bold;
+            border-radius: 4px; padding: 4px 8px;
+        }
+        .leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before,
+        .leaflet-tooltip-left:before, .leaflet-tooltip-right:before {
+            border-color: transparent !important;
+        }
+
+        .badge-local {
+            background-color: #F08200; color: white; font-weight: bold;
+            font-size: 14px; border: 2px solid #fff; border-radius: 50%;
+            text-align: center; line-height: 26px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        .badge-gerencial {
+            background-color: #2b2b2b; color: white; font-weight: bold;
+            font-size: 11px;
+            border: 1.5px solid #fff; border-radius: 20px;
+            padding: 2px 6px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            display: flex; justify-content: center; gap: 5px;
+            white-space: nowrap;
+        }
+
+        .custom-svg-pin {
+            background: transparent;
+            border: none;
+        }
+
+        .tooltip-hover-local {
+            background-color: #00506E;
+            color: #ffffff;
+            border: 1px solid #fff;
+            font-weight: bold;
+            font-size: 12px;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+        }
+        .tooltip-hover-local:before {
+            border-top-color: #00506E !important;
+        }
+
+        .popup-blocos {
+            max-height: 250px;
+            overflow-y: auto;
+            font-size: 12px;
+            padding-right: 5px;
+            color: #333;
+        }
+        .popup-blocos ul {
+            padding-left: 16px;
+            margin-top: 5px;
+            margin-bottom: 0;
+        }
+        .popup-blocos li {
+            margin-bottom: 3px;
+        }
+        
+        .popup-blocos::-webkit-scrollbar { width: 5px; }
+        .popup-blocos::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .popup-blocos::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        .popup-blocos::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* Tela de Loading inicial */
+        #loading {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(237, 237, 237, 0.95); z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-size: 16px; color: #00506E; font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">Carregando dados geográficos da nuvem...</div>
+    <div id="map"></div>
+
+    <!-- JS do Leaflet e do Turf.js -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
+    <script>
+        // =====================================================================
+        // 1. CAPTURA DE PARÂMETROS DA URL E CONEXÃO ASSÍCRONA (API FETCH)
+        // =====================================================================
+        const urlParams = new URLSearchParams(window.location.search);
+        const grupo = urlParams.get('grupo') || 'CEUS1'; // Padrão se nada for passado
+
+        // Altere para o seu repositório real do GitHub se necessário
+        const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
+        
+        const urlSubprefeituras = baseUrl + 'subprefeituras.geojson';
+        const urlDistritos = baseUrl + 'distritos.geojson';
+        const urlPerimetros = baseUrl + grupo + '%20Equip.geojson'; // Ajustado para o padrão do seu arquivo
+        const urlBlocos = baseUrl + grupo + '%20Estru.geojson';     // Ajustado para o padrão do seu arquivo
+
+        let subprefeiturasGeoJSON, distritosGeoJSON, geojsonPerimetros, geojsonBlocos;
+
+        Promise.all([
+            fetch(urlSubprefeituras).then(r => r.json()),
+            fetch(urlDistritos).then(r => r.json()),
+            fetch(urlPerimetros).then(r => r.json()),
+            fetch(urlBlocos).then(r => r.json()).catch(() => ({ type: "FeatureCollection", features: [] }))
+        ]).then(([sub, dist, perim, blocos]) => {
+            subprefeiturasGeoJSON = sub;
+            distritosGeoJSON = dist;
+            geojsonPerimetros = perim;
+            geojsonBlocos = blocos;
+            
+            // Remove a tela de loading
+            document.getElementById('loading').style.display = 'none';
+            
+            // Inicia o sistema do mapa
+            inicializarSistema();
+        }).catch(e => {
+            console.error("Erro ao carregar dados da nuvem para o grupo: " + grupo, e);
+            document.getElementById('loading').innerHTML = `<span style="color: #c62828; text-align:center; padding:20px;">Erro ao carregar dados do grupo: "${grupo}".<br>Verifique os nomes dos arquivos no GitHub.</span>`;
+        });
+
+        function inicializarSistema() {
+            // =====================================================================
+            // 2. LÓGICA DE CRUZAMENTO ESPACIAL AUTOMÁTICO (Turf.js)
+            // =====================================================================
+            if (distritosGeoJSON.features && distritosGeoJSON.features.length > 0 && 
+                geojsonPerimetros.features && geojsonPerimetros.features.length > 0) {
+                geojsonPerimetros.features.forEach(local => {
+                    if (!local.properties.distrito) { 
+                        try {
+                            const centroide = turf.centroid(local);
+                            for (let f of distritosGeoJSON.features) {
+                                if (turf.booleanPointInPolygon(centroide, f)) {
+                                    local.properties.distrito = f.properties.nm_distrito_municipal;
+                                    break;
+                                }
+                            }
+                        } catch(e) { console.warn("Erro ao localizar distrito do local", e); }
+                    }
+                });
+            }
+
+            // =====================================================================
+            // 3. DICIONÁRIOS E VARIÁVEIS PRINCIPAIS
+            // =====================================================================
+            const deParaDistritos = {
+                "Água Rasa": "Mooca", "Alto de Pinheiros": "Pinheiros", "Anhanguera": "Perus",
+                "Aricanduva": "Aricanduva", "Artur Alvim": "Penha", "Barra Funda": "Lapa",
+                "Bela Vista": "Sé", "Belém": "Mooca", "Bom Retiro": "Sé", "Brás": "Mooca",
+                "Brasilândia": "Freguesia do Ó", "Butantã": "Butantã", "Cachoeirinha": "Casa Verde",
+                "Cambuci": "Sé", "Campo Belo": "Santo Amaro", "Campo Grande": "Santo Amaro",
+                "Campo Limpo": "Campo Limpo", "Cangaiba": "Penha", "Capão Redondo": "Campo Limpo",
+                "Carrão": "Aricanduva", "Casa Verde": "Casa Verde", "Cidade Ademar": "Cidade Ademar",
+                "Cidade Dutra": "Capela do Socorro", "Cidade Líder": "Itaquera", "Cidade Tiradentes": "Cidade Tiradentes",
+                "Consolação": "Sé", "Cursino": "Ipiranga", "Ermelino Matarazzo": "Ermelino Matarazzo",
+                "Freguesia do Ó": "Freguesia do Ó", "Grajaú": "Capela do Socorro", "Guaianases": "Guaianases",
+                "Iguatemi": "São Mateus", "Ipiranga": "Ipiranga", "Itaim Bibi": "Pinheiros",
+                "Itaim Paulista": "Itaim Paulista", "Itaquera": "Itaquera", "Jabaquara": "Jabaquara",
+                "Jaçanã": "Jaçanã", "Jaguara": "Lapa", "Jaguaré": "Lapa", "Jaraguá": "Pirituba",
+                "Jardim Ângela": "MBoi Mirim", "Jardim Helena": "São Miguel", "Jardim Paulista": "Pinheiros",
+                "Jardim São Luís": "MBoi Mirim", "José Bonifácio": "Itaquera", "Lajeado": "Guaianases",
+                "Lapa": "Lapa", "Liberdade": "Sé", "Limão": "Casa Verde", "Mandaqui": "Santana",
+                "Marsilac": "Parelheiros", "Moema": "Vila Mariana", "Mooca": "Mooca", "Morumbi": "Butantã",
+                "Parelheiros": "Parelheiros", "Pari": "Mooca", "Parque do Carmo": "Itaquera",
+                "Pedreira": "Cidade Ademar", "Penha": "Penha", "Perdizes": "Lapa", "Perus": "Perus",
+                "Pinheiros": "Pinheiros", "Pirituba": "Pirituba", "Ponte Rasa": "Ermelino Matarazzo",
+                "Raposo Tavares": "Butantã", "República": "Sé", "Rio Pequeno": "Butantã",
+                "Sacomã": "Ipiranga", "Santa Cecília": "Sé", "Santana": "Santana",
+                "Santo Amaro": "Santo Amaro", "São Domingos": "Pirituba", "São Lucas": "Vila Prudente",
+                "São Mateus": "São Mateus", "São Miguel": "São Miguel", "São Rafael": "São Mateus",
+                "Sapopemba": "Sapopemba", "Saúde": "Vila Mariana", "Sé": "Sé",
+                "Socorro": "Capela do Socorro", "Tatuapé": "Mooca", "Tremembé": "Jaçanã",
+                "Tucuruvi": "Santana", "Vila Andrade": "Campo Limpo", "Vila Curuçá": "Itaim Paulista",
+                "Vila Formosa": "Aricanduva", "Vila Guilherme": "Vila Maria-Vila Guilherme",
+                "Vila Jacuí": "São Miguel", "Vila Leopoldina": "Lapa", "Vila Maria": "Vila Maria-Vila Guilherme",
+                "Vila Mariana": "Vila Mariana", "Vila Matilde": "Penha", "Vila Medeiros": "Vila Maria-Vila Guilherme",
+                "Vila Prudente": "Vila Prudente", "Vila Sônia": "Butantã"
+            };
+
+            const deParaDistritosLower = {};
+            for (const chave in deParaDistritos) { deParaDistritosLower[chave.toLowerCase()] = deParaDistritos[chave]; }
+            function buscarSubprefeitura(nome) { return nome ? deParaDistritos[nome] || deParaDistritosLower[nome.toLowerCase()] : undefined; }
+            
+            const map = L.map('map').setView([-23.5505, -46.6333], 11);
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+                maxZoom: 16
+            }).addTo(map);
+
+            const corAzul = "#00506E";
+            
+            let currentState = 0; 
+            let subprefeituraAtual = null;
+            let boundsSubprefeituraAtual = null;
+            let distritoAtual = null;
+            let boundsDistritoAtual = null;
+            let localAtual = null;
+            let boundsLocalAtual = null;
+
+            let subprefeiturasLayer, distritosLayer;
+            let distritoSelecionadoLayer = L.layerGroup(); 
+            let badgesSub = L.layerGroup().addTo(map);
+            let badgesDist = L.layerGroup();
+            let pinsLocais = L.layerGroup();
+            let perimetrosLayer = L.layerGroup();
+            let blocosLayer = L.layerGroup();
+            
+            let popupAtual = null; 
+            let contagemSub = {};
+            let contagemDist = {};
+            let primeiraRenderizacao = true;
+
+            // =====================================================================
+            // 4. PROCESSAMENTO AUTÔNOMO DOS DADOS
+            // =====================================================================
+            function processarDadosOffline() {
+                contagemSub = {};
+                contagemDist = {};
+
+                if (geojsonPerimetros.features && geojsonPerimetros.features.length > 0) {
+                    geojsonPerimetros.features.forEach(f => {
+                        const distrito = f.properties.distrito;
+                        if (distrito) {
+                            const sub = buscarSubprefeitura(distrito);
+                            if (!contagemDist[distrito]) contagemDist[distrito] = { total: 0 };
+                            contagemDist[distrito].total += 1;
+                            if (sub) {
+                                if (!contagemSub[sub]) contagemSub[sub] = { total: 0 };
+                                contagemSub[sub].total += 1;
+                            }
+                        }
+                    });
+                }
+                renderizarSubprefeituras();
+            }
+
+            // =====================================================================
+            // 5. FUNÇÕES ESTÉTICAS E AUXILIARES
+            // =====================================================================
+            function temDadosNoLocal(stats) { return stats && stats.total > 0; }
+
+            function estiloRegiao(feature, ehSubprefeitura) {
+                const nome = ehSubprefeitura ? feature.properties.name : feature.properties.nm_distrito_municipal;
+                const stats = ehSubprefeitura ? contagemSub[nome] : contagemDist[nome];
+                const ativo = temDadosNoLocal(stats);
+                return ativo 
+                    ? { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.35 }
+                    : { color: corAzul, weight: 1, fillColor: corAzul, fillOpacity: 0 };
+            }
+
+            function estiloHover(feature, ehSubprefeitura) {
+                const base = estiloRegiao(feature, ehSubprefeitura);
+                return { ...base, weight: 3, fillOpacity: Math.max(base.fillOpacity, 0.15) + 0.15 };
+            }
+
+            function criarBadgeIcon(stats) {
+                return L.divIcon({
+                    className: 'custom-icon', 
+                    html: `<div class="badge-local">${stats.total || 0}</div>`,
+                    iconSize: [30, 30], iconAnchor: [15, 15] 
+                });
+            }
+
+            // =====================================================================
+            // 6. RENDERIZAÇÃO: NÍVEIS DE DRILL-DOWN
+            // =====================================================================
+            function renderizarSubprefeituras() {
+                if (!subprefeiturasGeoJSON.features || subprefeiturasGeoJSON.features.length === 0) return;
+                
+                if (subprefeiturasLayer) map.removeLayer(subprefeiturasLayer);
+                badgesSub.clearLayers();
+
+                subprefeiturasLayer = L.geoJSON(subprefeiturasGeoJSON, {
+                    style: f => estiloRegiao(f, true),
+                    onEachFeature: function (feature, layer) {
+                        layer.on('mouseover', () => layer.setStyle(estiloHover(feature, true)));
+                        layer.on('mouseout', () => subprefeiturasLayer.resetStyle(layer));
+
+                        const nomeSub = feature.properties.name; 
+                        const stats = contagemSub[nomeSub];
+                        
+                        if (temDadosNoLocal(stats)) {
+                            L.marker(layer.getBounds().getCenter(), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesSub);
+                        }
+
+                        layer.on('click', function (e) {
+                            L.DomEvent.stopPropagation(e);
+                            subprefeituraAtual = nomeSub;
+                            boundsSubprefeituraAtual = e.target.getBounds();
+                            map.removeLayer(subprefeiturasLayer);
+                            badgesSub.removeFrom(map);
+                            map.fitBounds(boundsSubprefeituraAtual);
+                            renderizarDistritos(nomeSub);
+                        });
+                        layer.bindTooltip(nomeSub, { sticky: true });
+                    }
+                }).addTo(map);
+
+                if (primeiraRenderizacao) { 
+                    map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [0, 0] }); 
+                    map.zoomIn(0.1);
+                    primeiraRenderizacao = false; 
+                }
+            }
+
+            function renderizarDistritos(nomeSubClicada) {
+                currentState = 1;
+                if (distritosLayer) map.removeLayer(distritosLayer);
+                badgesDist.clearLayers();
+
+                distritosLayer = L.geoJSON(distritosGeoJSON, {
+                    filter: f => buscarSubprefeitura(f.properties.nm_distrito_municipal) === nomeSubClicada,
+                    style: f => estiloRegiao(f, false),
+                    onEachFeature: function (feature, layer) {
+                        layer.on('mouseover', () => layer.setStyle(estiloHover(feature, false)));
+                        layer.on('mouseout', () => distritosLayer.resetStyle(layer));
+
+                        const nomeDistrito = feature.properties.nm_distrito_municipal;
+                        const stats = contagemDist[nomeDistrito];
+                        
+                        if (temDadosNoLocal(stats)) {
+                            L.marker(layer.getBounds().getCenter(), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesDist);
+                        }
+
+                        layer.on('click', function (e) {
+                            L.DomEvent.stopPropagation(e);
+                            if (temDadosNoLocal(stats)) {
+                                mostrarPinsDistrito(nomeDistrito, e.target.getBounds());
+                            } else {
+                                map.fitBounds(e.target.getBounds());
+                            }
+                        });
+                        layer.bindTooltip(nomeDistrito, { sticky: true });
+                    }
+                }).addTo(map);
+                badgesDist.addTo(map);
+            }
+
+            function mostrarPinsDistrito(nomeDistrito, boundsDistrito) {
+                currentState = 2;
+                distritoAtual = nomeDistrito;
+                boundsDistritoAtual = boundsDistrito;
+                
+                if (distritosLayer) map.removeLayer(distritosLayer);
+                badgesDist.removeFrom(map);
+                
+                distritoSelecionadoLayer.clearLayers();
+                pinsLocais.clearLayers();
+                perimetrosLayer.clearLayers();
+                blocosLayer.clearLayers();
+                if (popupAtual) map.closePopup(popupAtual);
+
+                const featDistrito = distritosGeoJSON.features.find(f => f.properties.nm_distrito_municipal === nomeDistrito);
+                if (featDistrito) {
+                    L.geoJSON(featDistrito, {
+                        style: { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.1, dashArray: "4, 4" },
+                        interactive: false 
+                    }).addTo(distritoSelecionadoLayer);
+                }
+                distritoSelecionadoLayer.addTo(map);
+                map.fitBounds(boundsDistrito);
+
+                const perimetrosDoDistrito = geojsonPerimetros.features.filter(f => f.properties.distrito === nomeDistrito);
+
+                const svgPin = `
+                    <svg width="24" height="36" viewBox="0 0 24 36" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 0C5.373 0 0 5.373 0 12c0 8.4 12 24 12 24s12-15.6 12-24c0-6.627-5.373-12-12-12zm0 17c-2.761 0-5-2.239-5-5s2.239-5 5-5 5 2.239 5 5-2.239 5-5 5z" fill="#00506E"/>
+                    </svg>`;
+                    
+                const pinIcon = L.divIcon({
+                    className: 'custom-svg-pin',
+                    html: svgPin,
+                    iconSize: [24, 36],
+                    iconAnchor: [12, 36],
+                    tooltipAnchor: [0, -30] 
+                });
+
+                let gerouPin = false;
+
+                perimetrosDoDistrito.forEach(f => {
+                    const centroid = turf.centroid(f).geometry.coordinates;
+                    const latlng = [centroid[1], centroid[0]]; 
+                    const nomeLocal = f.properties.nm_equipamento || 'Local Mapeado';
+
+                    const marker = L.marker(latlng, { icon: pinIcon });
+                    
+                    marker.bindTooltip(nomeLocal, {
+                        permanent: false, 
+                        direction: 'top',
+                        className: 'tooltip-hover-local'
+                    });
+
+                    marker.on('click', function(e) {
+                        L.DomEvent.stopPropagation(e);
+                        mostrarPerimetroLocal(nomeLocal, f);
+                    });
+                    
+                    marker.addTo(pinsLocais);
+                    gerouPin = true;
+                });
+
+                if (gerouPin) {
+                    pinsLocais.addTo(map);
+                }
+            }
+
+            function mostrarPerimetroLocal(nomeLocal, featurePerimetro) {
+                currentState = 3;
+                localAtual = nomeLocal;
+                
+                pinsLocais.removeFrom(map);
+                perimetrosLayer.clearLayers();
+                blocosLayer.clearLayers();
+                map.closePopup();
+
+                const p = featurePerimetro.properties || {};
+                const tituloObra = p.nm_equipamento || nomeLocal || 'Local Mapeado';
+                
+                let temBlocos = false;
+                let blocosDoLocal = { type: "FeatureCollection", features: [] };
+                
+                if (geojsonBlocos && geojsonBlocos.features) {
+                    blocosDoLocal.features = geojsonBlocos.features.filter(f => f.properties && f.properties.nm_equipamento === nomeLocal);
+                    temBlocos = blocosDoLocal.features.length > 0;
+                }
+
+                const avisoBlocos = temBlocos 
+                    ? `<i style="color: #E65100; font-size: 11px;">(Clique nos blocos coloridos para ver a infra)</i>` 
+                    : `<i style="color: #666; font-size: 11px;">(Sem mapeamento de blocos internos)</i>`;
+
+                let listaDetalhes = '';
+                if (p.tx_modalidade_concessao) listaDetalhes += `<b>Modalidade:</b> ${p.tx_modalidade_concessao}<br>`;
+                if (p.nm_concessionaria) listaDetalhes += `<b>Concessionária:</b> ${p.nm_concessionaria}<br>`;
+                if (p.qt_investimento_real) listaDetalhes += `<b>Investimento:</b> R$ ${Number(p.qt_investimento_real).toLocaleString('pt-BR')}<br>`;
+                if (p.qt_prazo_concessao) listaDetalhes += `<b>Prazo:</b> ${p.qt_prazo_concessao} anos<br>`;
+
+                const separador = listaDetalhes !== '' ? `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;">` : ``;
+
+                let gruposInfra = {};
+                const chavesIgnoradas = ['nm_equipamento', 'distrito', 'tx_modalidade_concessao', 'nm_concessionaria', 'qt_investimento_real', 'qt_prazo_concessao', 'Bloco', 'bloco', 'Nome', 'nome'];
+                
+                for (const [chave, valor] of Object.entries(p)) {
+                    if (!chavesIgnoradas.includes(chave) && valor !== null && valor !== "" && valor > 0) {
+                        let categoria = "Outras Informações";
+                        let item = chave;
+                        
+                        if (chave.includes('-')) {
+                            const partes = chave.split('-');
+                            categoria = partes[0].trim();
+                            item = partes.slice(1).join('-').trim();
+                        }
+
+                        if (!gruposInfra[categoria]) gruposInfra[categoria] = [];
+                        gruposInfra[categoria].push({ nome: item, qtd: valor });
+                    }
+                }
+                
+                let infraPerimetroHTML = '';
+                if (Object.keys(gruposInfra).length > 0) {
+                    infraPerimetroHTML += `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;"><b>Infraestrutura Prevista/Geral:</b>`;
+                    for (const cat in gruposInfra) {
+                        infraPerimetroHTML += `<div style="margin-top:6px; color:#00506E;"><b>${cat}:</b></div><ul>`;
+                        gruposInfra[cat].forEach(i => {
+                            infraPerimetroHTML += `<li>${i.nome} : ${i.qtd}</li>`;
+                        });
+                        infraPerimetroHTML += `</ul>`;
+                    }
+                }
+
+                const infoGeralHTML = `
+                    <div class="popup-blocos">
+                        <div style="text-align:center;">
+                            <strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br>
+                            <span style="font-size:10px; color:#777; text-transform:uppercase; letter-spacing:0.5px;">Visão Geral do Local</span>
+                        </div>
+                        ${separador}
+                        ${listaDetalhes}
+                        ${infraPerimetroHTML}
+                        <div style="text-align:center; margin-top: 8px;">${avisoBlocos}</div>
+                    </div>
+                `;
+
+                const camadaPerimetro = L.geoJSON(featurePerimetro, {
+                    style: { color: "#E65100", weight: 3, fillColor: "#F57C00", fillOpacity: 0.2, dashArray: "5, 5" }
+                }).addTo(perimetrosLayer);
+
+                camadaPerimetro.bindTooltip(`<b>${tituloObra}</b>`, { sticky: true });
+
+                camadaPerimetro.on('click', function(e) {
+                    L.DomEvent.stopPropagation(e);
+                    L.popup().setLatLng(e.latlng).setContent(infoGeralHTML).openOn(map);
+                });
+
+                if (temBlocos) {
+                    L.geoJSON(blocosDoLocal, {
+                        style: function (feature) {
+                            const props = feature.properties || {};
+                            const tipo = props.Bloco || props.bloco || props.Nome || props.nome || 'Bloco Genérico';
+                            
+                            const paleta = [
+                                { border: '#1565C0', fill: '#2196F3' },
+                                { border: '#2E7D32', fill: '#4CAF50' },
+                                { border: '#6A1B9A', fill: '#9C27B0' },
+                                { border: '#C62828', fill: '#F44336' },
+                                { border: '#00838F', fill: '#00BCD4' },
+                                { border: '#F57F17', fill: '#FBC02D' }
+                            ];
+                            
+                            let hash = 0;
+                            for (let i = 0; i < tipo.length; i++) {
+                                hash = tipo.charCodeAt(i) + ((hash << 5) - hash);
+                            }
+                            const cor = paleta[Math.abs(hash) % paleta.length];
+                            
+                            return { color: cor.border, weight: 1.5, fillColor: cor.fill, fillOpacity: 0.65 };
+                        },
+                        onEachFeature: (f, l) => {
+                            const props = f.properties || {};
+                            const tituloBloco = props.Bloco || props.bloco || props.Nome || props.nome || 'Bloco Genérico';
+                            
+                            l.bindTooltip(`<b>${tituloObra}</b><br>${tituloBloco}`, { sticky: true });
+
+                            let gruposInfraBloco = {};
+                            for (const [chave, valor] of Object.entries(props)) {
+                                if (!chavesIgnoradas.includes(chave) && valor !== null && valor !== "" && valor > 0) {
+                                    let categoria = "Outros Itens";
+                                    let item = chave;
+                                    
+                                    if (chave.includes('-')) {
+                                        const partes = chave.split('-');
+                                        categoria = partes[0].trim();
+                                        item = partes.slice(1).join('-').trim();
+                                    } else {
+                                        categoria = "Infraestrutura";
+                                    }
+
+                                    if (!gruposInfraBloco[categoria]) gruposInfraBloco[categoria] = [];
+                                    gruposInfraBloco[categoria].push({ nome: item, qtd: valor });
+                                }
+                            }
+
+                            let listaInfraBlocoHTML = '';
+                            if (Object.keys(gruposInfraBloco).length > 0) {
+                                for (const cat in gruposInfraBloco) {
+                                    if (cat !== "Infraestrutura") listaInfraBlocoHTML += `<div style="margin-top:6px; color:#00506E;"><b>${cat}:</b></div>`;
+                                    listaInfraBlocoHTML += `<ul>`;
+                                    gruposInfraBloco[cat].forEach(i => {
+                                        listaInfraBlocoHTML += `<li>${i.nome} : ${i.qtd}</li>`;
+                                    });
+                                    listaInfraBlocoHTML += `</ul>`;
+                                }
+                            } else {
+                                listaInfraBlocoHTML = '<ul><li>Sem detalhamento de infraestrutura.</li></ul>';
+                            }
+
+                            const infoBlocoHTML = `
+                                <div class="popup-blocos">
+                                    <div style="text-align:center;">
+                                        <strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br>
+                                        <span style="display:inline-block; margin-top:2px; background:#ddd; padding:2px 5px; border-radius:4px; font-size:10px; font-weight:bold; color:#333;">BLOCO: ${tituloBloco}</span>
+                                    </div>
+                                    <hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;">
+                                    <b>Itens Disponíveis:</b>
+                                    ${listaInfraBlocoHTML}
+                                </div>
+                            `;
+                            
+                            l.bindPopup(infoBlocoHTML);
+                            l.on('click', function(e) { L.DomEvent.stopPropagation(e); });
+                        }
+                    }).addTo(blocosLayer);
+                }
+
+                perimetrosLayer.addTo(map);
+                blocosLayer.addTo(map);
+
+                boundsLocalAtual = camadaPerimetro.getBounds();
+                map.fitBounds(boundsLocalAtual, { padding: [30, 30] });
+            }
+
+            // =====================================================================
+            // 7. SISTEMA DE RETORNO (VOLTAR AO CLICAR NA ÁREA VAZIA DO MAPA)
+            // =====================================================================
+            map.on('click', function () {
+                if (currentState === 3) {
+                    currentState = 2;
+                    map.closePopup();
+                    perimetrosLayer.clearLayers();
+                    blocosLayer.clearLayers();
+                    pinsLocais.addTo(map);
+                    map.fitBounds(boundsDistritoAtual);
+                    
+                } else if (currentState === 2) {
+                    currentState = 1;
+                    pinsLocais.removeFrom(map);
+                    distritoSelecionadoLayer.removeFrom(map); 
+                    distritosLayer.addTo(map); 
+                    badgesDist.addTo(map);
+                    map.fitBounds(boundsSubprefeituraAtual);
+                    
+                } else if (currentState === 1) {
+                    currentState = 0;
+                    if (distritosLayer) map.removeLayer(distritosLayer);
+                    badgesDist.removeFrom(map);
+                    subprefeiturasLayer.addTo(map);
+                    badgesSub.addTo(map);
+                    map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [0, 0] });
+                    map.zoomIn(0.1);
+                }
+            });
+
+            processarDadosOffline();
+        }
+    </script>
+</body>
+</html>
