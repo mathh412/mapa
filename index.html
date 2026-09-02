@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mapa Interativo - São Paulo (Roteamento Inteligente)</title>
+    <title>Mapa Interativo - São Paulo (Roteamento e Zoom Refinados)</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
@@ -117,11 +117,10 @@
         }
 
         // =====================================================================
-        // 2. SISTEMA CENTRAL E ROTEAMENTO DE ESTADO (NOVA ARQUITETURA)
+        // 2. SISTEMA CENTRAL E ROTEAMENTO (UX FLUIDA)
         // =====================================================================
         function inicializarSistema() {
             
-            // 1. Processamento Geoespacial Turf.js
             if (distritosGeoJSON.features && distritosGeoJSON.features.length > 0 && geojsonPerimetros.features && geojsonPerimetros.features.length > 0) {
                 geojsonPerimetros.features.forEach(local => {
                     if (!local.properties.distrito) { 
@@ -148,7 +147,8 @@
             
             const map = L.map('map').setView([-23.5505, -46.6333], 11);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'Tiles &copy; Esri', maxZoom: 17
+                attribution: 'Tiles &copy; Esri', 
+                maxZoom: 16 // Nível seguro na América do Sul
             }).addTo(map);
 
             const corAzul = "#00506E";
@@ -160,9 +160,8 @@
             let badgesSub = L.layerGroup().addTo(map), badgesDist = L.layerGroup();
             let pinsLocais = L.layerGroup(), perimetrosLayer = L.layerGroup(), blocosLayer = L.layerGroup();
             
-            let contagemSub = {}, contagemDist = {}, primeiraRenderizacao = true;
+            let contagemSub = {}, contagemDist = {};
 
-            // 2. Análise Limpa das Contagens (Sem desenhar nada na tela ainda)
             if (geojsonPerimetros.features && geojsonPerimetros.features.length > 0) {
                 geojsonPerimetros.features.forEach(f => {
                     const distrito = f.properties.distrito;
@@ -193,6 +192,7 @@
             }
 
             function renderizarSubprefeituras() {
+                currentState = 0;
                 if (!subprefeiturasGeoJSON.features || subprefeiturasGeoJSON.features.length === 0) return;
                 if (subprefeiturasLayer) map.removeLayer(subprefeiturasLayer);
                 badgesSub.clearLayers();
@@ -214,8 +214,7 @@
                         layer.bindTooltip(nomeSub, { sticky: true });
                     }
                 }).addTo(map);
-
-                if (primeiraRenderizacao) { map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [0, 0] }); map.zoomIn(0.1); primeiraRenderizacao = false; }
+                badgesSub.addTo(map);
             }
 
             function renderizarDistritos(nomeSubClicada) {
@@ -251,7 +250,7 @@
                 const featDistrito = distritosGeoJSON.features.find(f => f.properties.nm_distrito_municipal === nomeDistrito);
                 if (featDistrito) L.geoJSON(featDistrito, { style: { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.1, dashArray: "4, 4" }, interactive: false }).addTo(distritoSelecionadoLayer);
                 distritoSelecionadoLayer.addTo(map); 
-                map.fitBounds(boundsDistrito); // Câmera vai para o Distrito
+                map.fitBounds(boundsDistrito);
 
                 const svgPin = `<svg width="24" height="36" viewBox="0 0 24 36" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.373 0 0 5.373 0 12c0 8.4 12 24 12 24s12-15.6 12-24c0-6.627-5.373-12-12-12zm0 17c-2.761 0-5-2.239-5-5s2.239-5 5-5 5 2.239 5 5-2.239 5-5 5z" fill="#00506E"/></svg>`;
                 const pinIcon = L.divIcon({ className: 'custom-svg-pin', html: svgPin, iconSize: [24, 36], iconAnchor: [12, 36], tooltipAnchor: [0, -30] });
@@ -349,27 +348,44 @@
 
                 perimetrosLayer.addTo(map); blocosLayer.addTo(map);
                 
-                // MÁGICA FINAL DA CÂMERA (Evita o problema da imagem)
+                // MÁGICA FINAL DO ZOOM (Impede o erro da tela cinza travando no zoom 15)
                 boundsLocalAtual = camadaPerimetro.getBounds();
-                map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 17 });
+                map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 15 });
             }
 
+            // =====================================================================
+            // NOVO SISTEMA DE RETORNO (RECONSTRUÇÃO ATIVA DAS CAMADAS)
+            // =====================================================================
             map.on('click', function () {
-                if (currentState === 3) { currentState = 2; map.closePopup(); perimetrosLayer.clearLayers(); blocosLayer.clearLayers(); pinsLocais.addTo(map); map.fitBounds(boundsDistritoAtual); }
-                else if (currentState === 2) { currentState = 1; pinsLocais.removeFrom(map); distritoSelecionadoLayer.removeFrom(map); distritosLayer.addTo(map); badgesDist.addTo(map); map.fitBounds(boundsSubprefeituraAtual); }
-                else if (currentState === 1) { currentState = 0; if (distritosLayer) map.removeLayer(distritosLayer); badgesDist.removeFrom(map); subprefeiturasLayer.addTo(map); badgesSub.addTo(map); map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [0, 0] }); map.zoomIn(0.1); }
+                if (currentState === 3) { 
+                    map.closePopup(); perimetrosLayer.clearLayers(); blocosLayer.clearLayers(); 
+                    if (distritoAtual && boundsDistritoAtual) { mostrarPinsDistrito(distritoAtual, boundsDistritoAtual); }
+                    else { renderizarSubprefeituras(); }
+                }
+                else if (currentState === 2) { 
+                    pinsLocais.clearLayers(); distritoSelecionadoLayer.clearLayers(); 
+                    if (subprefeituraAtual && boundsSubprefeituraAtual) { 
+                        renderizarDistritos(subprefeituraAtual); 
+                        map.fitBounds(boundsSubprefeituraAtual); 
+                    }
+                    else { renderizarSubprefeituras(); }
+                }
+                else if (currentState === 1) { 
+                    if (distritosLayer) map.removeLayer(distritosLayer); badgesDist.clearLayers(); 
+                    renderizarSubprefeituras(); 
+                    if (subprefeiturasLayer) map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [0, 0] });
+                }
             });
 
             // =====================================================================
-            // 3. O ROTEADOR INTELIGENTE (Define o Nível antes de desenhar a tela)
+            // 3. O ROTEADOR INTELIGENTE (Define o Nível com Reconstrução Perfeita)
             // =====================================================================
             const subsAtivas = Object.keys(contagemSub).filter(k => contagemSub[k].total > 0);
             const distsAtivos = Object.keys(contagemDist).filter(k => contagemDist[k].total > 0);
             const numLocais = geojsonPerimetros.features ? geojsonPerimetros.features.length : 0;
 
             if (numLocais === 1) {
-                // ROTA A: Pula tudo e vai direto para o zoom local do Perímetro (Evita Race Condition)
-                currentState = 3;
+                // ROTA A: Pula tudo e vai direto para o zoom local do Perímetro
                 const featureUnica = geojsonPerimetros.features[0];
                 const nomeLocalUnico = featureUnica.properties.nm_equipamento || 'Local Mapeado';
                 const distUnico = featureUnica.properties.distrito;
@@ -383,12 +399,10 @@
                     if (featDist) boundsDistritoAtual = L.geoJSON(featDist).getBounds();
                 }
                 
-                // Manda focar no polígono sem desenhar a cidade grande antes
                 mostrarPerimetroLocal(nomeLocalUnico, featureUnica);
 
             } else if (distsAtivos.length === 1 && numLocais > 1) {
                 // ROTA B: Pula pra visão de Pins no Distrito
-                currentState = 2;
                 const distUnico = distsAtivos[0];
                 const subUnica = buscarSubprefeitura(distUnico);
 
@@ -399,13 +413,12 @@
                     
                     const featDist = distritosGeoJSON.features.find(x => x.properties.nm_distrito_municipal === distUnico);
                     if (featDist) {
-                        const bDist = L.geoJSON(featDist).getBounds();
-                        mostrarPinsDistrito(distUnico, bDist);
+                        boundsDistritoAtual = L.geoJSON(featDist).getBounds();
+                        mostrarPinsDistrito(distUnico, boundsDistritoAtual);
                     }
                 }
             } else if (subsAtivas.length === 1 && distsAtivos.length > 1) {
                 // ROTA C: Pula pra visão de Subprefeitura
-                currentState = 1;
                 const subUnica = subsAtivas[0];
                 subprefeituraAtual = subUnica;
                 
@@ -417,8 +430,10 @@
                 }
             } else {
                 // ROTA D: Visão geral da cidade (Padrão)
-                currentState = 0;
                 renderizarSubprefeituras(); 
+                if (subprefeiturasLayer) {
+                    map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [0, 0] });
+                }
             }
         }
     </script>
