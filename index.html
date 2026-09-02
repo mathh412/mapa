@@ -478,30 +478,72 @@
 
             processarDadosOffline(); // Renderiza o mapa geral primeiro
 
+// =====================================================================
+            // 3. INTELIGÊNCIA DE AUTO-ZOOM EM CASCATA (Subprefeitura > Distrito > Local)
             // =====================================================================
-            // 3. INTELIGÊNCIA DE AUTO-ZOOM
-            // =====================================================================
-            if (geojsonPerimetros.features && geojsonPerimetros.features.length === 1) {
+            
+            // Descobre quantas subs e distritos têm dados ativos após o filtro do Power BI
+            const subsAtivas = Object.keys(contagemSub).filter(k => contagemSub[k].total > 0);
+            const distsAtivos = Object.keys(contagemDist).filter(k => contagemDist[k].total > 0);
+            const numLocais = geojsonPerimetros.features ? geojsonPerimetros.features.length : 0;
+
+            if (numLocais === 1) {
+                // CASO 1: Apenas 1 Perímetro filtrado -> Avança 3 camadas (Zoom Profundo)
                 const featureUnica = geojsonPerimetros.features[0];
                 const nomeLocalUnico = featureUnica.properties.nm_equipamento || 'Local Mapeado';
                 const distUnico = featureUnica.properties.distrito;
                 const subUnica = buscarSubprefeitura(distUnico);
 
                 if (distUnico && subUnica) {
-                    subprefeituraAtual = subUnica;
-                    distritoAtual = distUnico;
-
+                    subprefeituraAtual = subUnica; distritoAtual = distUnico;
+                    
                     const featSub = subprefeiturasGeoJSON.features.find(x => x.properties.name === subUnica);
                     if (featSub) boundsSubprefeituraAtual = L.geoJSON(featSub).getBounds();
-
+                    
                     const featDist = distritosGeoJSON.features.find(x => x.properties.nm_distrito_municipal === distUnico);
                     if (featDist) boundsDistritoAtual = L.geoJSON(featDist).getBounds();
 
                     if (subprefeiturasLayer) map.removeLayer(subprefeiturasLayer);
                     badgesSub.removeFrom(map);
-
-                    // Pula etapas e vai direto para o zoom local
+                    
                     mostrarPerimetroLocal(nomeLocalUnico, featureUnica);
+                }
+            } 
+            else if (distsAtivos.length === 1 && numLocais > 1) {
+                // CASO 2: Vários locais, mas todos contidos em 1 único Distrito -> Avança 2 camadas (Pins)
+                const distUnico = distsAtivos[0];
+                const subUnica = buscarSubprefeitura(distUnico);
+
+                if (distUnico && subUnica) {
+                    subprefeituraAtual = subUnica;
+                    
+                    const featSub = subprefeiturasGeoJSON.features.find(x => x.properties.name === subUnica);
+                    if (featSub) boundsSubprefeituraAtual = L.geoJSON(featSub).getBounds();
+
+                    if (subprefeiturasLayer) map.removeLayer(subprefeiturasLayer);
+                    badgesSub.removeFrom(map);
+
+                    const featDist = distritosGeoJSON.features.find(x => x.properties.nm_distrito_municipal === distUnico);
+                    if (featDist) {
+                        const bDist = L.geoJSON(featDist).getBounds();
+                        mostrarPinsDistrito(distUnico, bDist);
+                    }
+                }
+            }
+            else if (subsAtivas.length === 1 && distsAtivos.length > 1) {
+                // CASO 3: Vários distritos, mas todos contidos em 1 única Subprefeitura -> Avança 1 camada (Distritos)
+                const subUnica = subsAtivas[0];
+                subprefeituraAtual = subUnica;
+                
+                const featSub = subprefeiturasGeoJSON.features.find(x => x.properties.name === subUnica);
+                if (featSub) {
+                    boundsSubprefeituraAtual = L.geoJSON(featSub).getBounds();
+                    
+                    if (subprefeiturasLayer) map.removeLayer(subprefeiturasLayer);
+                    badgesSub.removeFrom(map);
+
+                    map.fitBounds(boundsSubprefeituraAtual);
+                    renderizarDistritos(subUnica);
                 }
             }
         }
