@@ -110,10 +110,10 @@
         // 1. CAPTURA DE PARÂMETROS DA URL E CONEXÃO MÚLTIPLA BLINDADA
         // =====================================================================
         const urlParams = new URLSearchParams(window.location.search);
-        const grupoParam = urlParams.get('grupo'); // Pode ser "CEUS1", ou "CEUS1,CEUS2,SAUDE", ou vazio
+        const grupoParam = urlParams.get('grupo');
 
-        // Transforma o parâmetro em uma lista (Array). Se for vazio, cria lista vazia [].
-        const grupos = grupoParam ? grupoParam.split(',').map(g => g.trim()).filter(g => g) : [];
+        // Pega a lista, tira os espaços e força para MINÚSCULO (para bater com a pasta do GitHub)
+        const grupos = grupoParam ? grupoParam.toLowerCase().split(',').map(g => g.trim()).filter(g => g) : [];
 
         const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
         
@@ -122,7 +122,6 @@
 
         let subprefeiturasGeoJSON, distritosGeoJSON, geojsonPerimetros, geojsonBlocos;
 
-        // Função auxiliar segura
         async function fetchSeguro(url) {
             if (!url) return { type: "FeatureCollection", features: [] };
             try {
@@ -134,17 +133,15 @@
             }
         }
 
-        // Prepara os downloads fixos
         const promessasBase = [
             fetchSeguro(urlSubprefeituras),
             fetchSeguro(urlDistritos)
         ];
 
-        // Prepara os downloads dinâmicos (um fetch para CADA grupo na lista)
+        // CORREÇÃO AQUI: Usando "g" no lugar de "grupo"
         const promessasPerimetros = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + g + '/perimetros.geojson'));
         const promessasBlocos = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + g + '/blocos.geojson'));
 
-        // Executa TODOS os downloads simultaneamente
         Promise.all([
             Promise.all(promessasBase),
             Promise.all(promessasPerimetros),
@@ -154,25 +151,21 @@
             subprefeiturasGeoJSON = sub;
             distritosGeoJSON = dist;
 
-            // Faz o MERGE de todos os Perímetros baixados em um único GeoJSON
             let featuresPerimetros = [];
             arrayPerimetros.forEach(geo => {
                 if (geo && geo.features) featuresPerimetros = featuresPerimetros.concat(geo.features);
             });
             geojsonPerimetros = { type: "FeatureCollection", features: featuresPerimetros };
 
-            // Faz o MERGE de todos os Blocos baixados em um único GeoJSON
             let featuresBlocos = [];
             arrayBlocos.forEach(geo => {
                 if (geo && geo.features) featuresBlocos = featuresBlocos.concat(geo.features);
             });
             geojsonBlocos = { type: "FeatureCollection", features: featuresBlocos };
             
-            // Remove a tela de loading
             const loadingEl = document.getElementById('loading');
             if (loadingEl) loadingEl.style.display = 'none';
             
-            // Inicia o sistema do mapa com a base unificada
             inicializarSistema();
         });
         
