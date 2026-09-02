@@ -141,8 +141,8 @@
         ];
 
         // Prepara os downloads dinâmicos (um fetch para CADA grupo na lista)
-        const promessasPerimetros = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + grupo + '/perimetros.geojson'));
-        const promessasBlocos = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + grupo + '/blocos.geojson'));
+        const promessasPerimetros = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + g + '/perimetros.geojson'));
+        const promessasBlocos = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + g + '/blocos.geojson'));
 
         // Executa TODOS os downloads simultaneamente
         Promise.all([
