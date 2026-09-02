@@ -106,24 +106,23 @@
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 
     <script>
-        // =====================================================================
-        // 1. CAPTURA DE PARÂMETROS DA URL E CONEXÃO ASSÍCRONA BLINDADA
+   // =====================================================================
+        // 1. CAPTURA DE PARÂMETROS DA URL E CONEXÃO MÚLTIPLA BLINDADA
         // =====================================================================
         const urlParams = new URLSearchParams(window.location.search);
-        const grupo = urlParams.get('grupo'); // Se não vier nada, fica 'null' (vazio)
+        const grupoParam = urlParams.get('grupo'); // Pode ser "CEUS1", ou "CEUS1,CEUS2,SAUDE", ou vazio
+
+        // Transforma o parâmetro em uma lista (Array). Se for vazio, cria lista vazia [].
+        const grupos = grupoParam ? grupoParam.split(',').map(g => g.trim()).filter(g => g) : [];
 
         const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
         
         const urlSubprefeituras = baseUrl + 'divisaoadm/subprefeituras.geojson';
         const urlDistritos = baseUrl + 'divisaoadm/distritos.geojson';
-        
-        // Se nenhum grupo foi informado, define URLs falsas que caem direto no tratamento de vazio
-        const urlPerimetros = grupo ? baseUrl + 'grupos/' + grupo + '/perimetros.geojson' : '';
-        const urlBlocos = grupo ? baseUrl + 'grupos/' + grupo + '/blocos.geojson' : '';
 
         let subprefeiturasGeoJSON, distritosGeoJSON, geojsonPerimetros, geojsonBlocos;
 
-        // Função auxiliar para buscar com segurança (retorna vazio se der 404 ou erro)
+        // Função auxiliar segura
         async function fetchSeguro(url) {
             if (!url) return { type: "FeatureCollection", features: [] };
             try {
@@ -135,25 +134,48 @@
             }
         }
 
-        // Executa o carregamento em paralelo de forma 100% segura
-        Promise.all([
+        // Prepara os downloads fixos
+        const promessasBase = [
             fetchSeguro(urlSubprefeituras),
-            fetchSeguro(urlDistritos),
-            fetchSeguro(urlPerimetros),
-            fetchSeguro(urlBlocos)
-        ]).then(([sub, dist, perim, blocos]) => {
+            fetchSeguro(urlDistritos)
+        ];
+
+        // Prepara os downloads dinâmicos (um fetch para CADA grupo na lista)
+        const promessasPerimetros = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + grupo + '/perimetros.geojson'));
+        const promessasBlocos = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + grupo + '/blocos.geojson'));
+
+        // Executa TODOS os downloads simultaneamente
+        Promise.all([
+            Promise.all(promessasBase),
+            Promise.all(promessasPerimetros),
+            Promise.all(promessasBlocos)
+        ]).then(([[sub, dist], arrayPerimetros, arrayBlocos]) => {
+            
             subprefeiturasGeoJSON = sub;
             distritosGeoJSON = dist;
-            geojsonPerimetros = perim;
-            geojsonBlocos = blocos;
+
+            // Faz o MERGE de todos os Perímetros baixados em um único GeoJSON
+            let featuresPerimetros = [];
+            arrayPerimetros.forEach(geo => {
+                if (geo && geo.features) featuresPerimetros = featuresPerimetros.concat(geo.features);
+            });
+            geojsonPerimetros = { type: "FeatureCollection", features: featuresPerimetros };
+
+            // Faz o MERGE de todos os Blocos baixados em um único GeoJSON
+            let featuresBlocos = [];
+            arrayBlocos.forEach(geo => {
+                if (geo && geo.features) featuresBlocos = featuresBlocos.concat(geo.features);
+            });
+            geojsonBlocos = { type: "FeatureCollection", features: featuresBlocos };
             
             // Remove a tela de loading
             const loadingEl = document.getElementById('loading');
             if (loadingEl) loadingEl.style.display = 'none';
             
-            // Inicia o sistema do mapa
+            // Inicia o sistema do mapa com a base unificada
             inicializarSistema();
         });
+        
         function inicializarSistema() {
             // =====================================================================
             // 2. LÓGICA DE CRUZAMENTO ESPACIAL AUTOMÁTICO (Turf.js)
