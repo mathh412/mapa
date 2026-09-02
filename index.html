@@ -112,14 +112,14 @@
         const urlParams = new URLSearchParams(window.location.search);
         const grupo = urlParams.get('grupo'); // Se não vier nada, fica 'null' (vazio)
 
-        const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
+        const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/grupos/';
         
-        const urlSubprefeituras = baseUrl + 'subprefeituras.geojson';
-        const urlDistritos = baseUrl + 'distritos.geojson';
+        const urlSubprefeituras = baseUrl + 'divisaoadm/subprefeituras.geojson';
+        const urlDistritos = baseUrl + 'divisaoadm/distritos.geojson';
         
         // Se nenhum grupo foi informado, define URLs falsas que caem direto no tratamento de vazio
-        const urlPerimetros = grupo ? baseUrl + grupo + '%20Equip.geojson' : '';
-        const urlBlocos = grupo ? baseUrl + grupo + '%20Estru.geojson' : '';
+        const urlPerimetros = grupo ? baseUrl + grupo + '/perimetros.geojson' : '';
+        const urlBlocos = grupo ? baseUrl + grupo + '/blocos.geojson' : '';
 
         let subprefeiturasGeoJSON, distritosGeoJSON, geojsonPerimetros, geojsonBlocos;
 
