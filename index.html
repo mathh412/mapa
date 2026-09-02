@@ -106,27 +106,42 @@
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 
     <script>
+   <script>
         // =====================================================================
-        // 1. CAPTURA DE PARÂMETROS DA URL E CONEXÃO ASSÍCRONA (API FETCH)
+        // 1. CAPTURA DE PARÂMETROS DA URL E CONEXÃO ASSÍCRONA BLINDADA
         // =====================================================================
         const urlParams = new URLSearchParams(window.location.search);
-        const grupo = urlParams.get('grupo');
+        const grupo = urlParams.get('grupo'); // Se não vier nada, fica 'null' (vazio)
 
-        // Altere para o seu repositório real do GitHub se necessário
         const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
         
         const urlSubprefeituras = baseUrl + 'subprefeituras.geojson';
         const urlDistritos = baseUrl + 'distritos.geojson';
-        const urlPerimetros = baseUrl + grupo + '%20Equip.geojson'; // Ajustado para o padrão do seu arquivo
-        const urlBlocos = baseUrl + grupo + '%20Estru.geojson';     // Ajustado para o padrão do seu arquivo
+        
+        // Se nenhum grupo foi informado, define URLs falsas que caem direto no tratamento de vazio
+        const urlPerimetros = grupo ? baseUrl + grupo + '%20Equip.geojson' : '';
+        const urlBlocos = grupo ? baseUrl + grupo + '%20Estru.geojson' : '';
 
         let subprefeiturasGeoJSON, distritosGeoJSON, geojsonPerimetros, geojsonBlocos;
 
+        // Função auxiliar para buscar com segurança (retorna vazio se der 404 ou erro)
+        async function fetchSeguro(url) {
+            if (!url) return { type: "FeatureCollection", features: [] };
+            try {
+                const response = await fetch(url);
+                if (!response.ok) return { type: "FeatureCollection", features: [] };
+                return await response.json();
+            } catch (err) {
+                return { type: "FeatureCollection", features: [] };
+            }
+        }
+
+        // Executa o carregamento em paralelo de forma 100% segura
         Promise.all([
-            fetch(urlSubprefeituras).then(r => r.json()),
-            fetch(urlDistritos).then(r => r.json()),
-            fetch(urlPerimetros).then(r => r.json()),
-            fetch(urlBlocos).then(r => r.json()).catch(() => ({ type: "FeatureCollection", features: [] }))
+            fetchSeguro(urlSubprefeituras),
+            fetchSeguro(urlDistritos),
+            fetchSeguro(urlPerimetros),
+            fetchSeguro(urlBlocos)
         ]).then(([sub, dist, perim, blocos]) => {
             subprefeiturasGeoJSON = sub;
             distritosGeoJSON = dist;
@@ -134,15 +149,12 @@
             geojsonBlocos = blocos;
             
             // Remove a tela de loading
-            document.getElementById('loading').style.display = 'none';
+            const loadingEl = document.getElementById('loading');
+            if (loadingEl) loadingEl.style.display = 'none';
             
             // Inicia o sistema do mapa
             inicializarSistema();
-        }).catch(e => {
-            console.error("Erro ao carregar dados da nuvem para o grupo: " + grupo, e);
-            document.getElementById('loading').innerHTML = `<span style="color: #c62828; text-align:center; padding:20px;">Erro ao carregar dados do grupo: "${grupo}".<br>Verifique os nomes dos arquivos no GitHub.</span>`;
         });
-
         function inicializarSistema() {
             // =====================================================================
             // 2. LÓGICA DE CRUZAMENTO ESPACIAL AUTOMÁTICO (Turf.js)
