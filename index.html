@@ -110,7 +110,7 @@
         // 1. CAPTURA DE PARÂMETROS DA URL E CONEXÃO ASSÍCRONA (API FETCH)
         // =====================================================================
         const urlParams = new URLSearchParams(window.location.search);
-        const grupo = urlParams.get('grupo') || 'CEUS1'; // Padrão se nada for passado
+        const grupo = urlParams.get('grupo');
 
         // Altere para o seu repositório real do GitHub se necessário
         const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
