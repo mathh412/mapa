@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mapa Interativo - São Paulo (Roteamento e Zoom Refinados)</title>
+    <title>Mapa Interativo - São Paulo (Roteamento Inteligente e Formatação Numérica)</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
@@ -87,7 +87,7 @@
                 
                 if (locaisFiltrados.length > 0) {
                     featuresPerimetros = featuresPerimetros.filter(f => {
-                        const nomeEquipNormalizado = normalizarTexto(f.properties.nm_equipamento);
+                        const nomeEquipNormalizado = normalizarTexto(f.properties.Equipamento || f.properties.nm_equipamento);
                         return locaisFiltrados.includes(nomeEquipNormalizado);
                     });
                 }
@@ -98,7 +98,7 @@
 
                 if (locaisFiltrados.length > 0) {
                     featuresBlocos = featuresBlocos.filter(f => {
-                        const nomeEquipNormalizado = normalizarTexto(f.properties.nm_equipamento);
+                        const nomeEquipNormalizado = normalizarTexto(f.properties.Equipamento || f.properties.nm_equipamento);
                         return locaisFiltrados.includes(nomeEquipNormalizado);
                     });
                 }
@@ -148,7 +148,7 @@
             const map = L.map('map').setView([-23.5505, -46.6333], 11);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri', 
-                maxZoom: 16 // Nível seguro ajustado na América do Sul
+                maxZoom: 16 
             }).addTo(map);
 
             const corAzul = "#00506E";
@@ -257,7 +257,7 @@
 
                 geojsonPerimetros.features.filter(f => f.properties.distrito === nomeDistrito).forEach(f => {
                     const centroid = turf.centroid(f).geometry.coordinates;
-                    const nomeLocal = f.properties.nm_equipamento || 'Local Mapeado';
+                    const nomeLocal = f.properties.Equipamento || f.properties.nm_equipamento || 'Local Mapeado';
                     const marker = L.marker([centroid[1], centroid[0]], { icon: pinIcon });
                     marker.bindTooltip(nomeLocal, { permanent: false, direction: 'top', className: 'tooltip-hover-local' });
                     marker.on('click', function(e) { L.DomEvent.stopPropagation(e); mostrarPerimetroLocal(nomeLocal, f); });
@@ -270,19 +270,40 @@
                 currentState = 3; pinsLocais.removeFrom(map); perimetrosLayer.clearLayers(); blocosLayer.clearLayers(); map.closePopup();
 
                 const p = featurePerimetro.properties || {};
-                const tituloObra = p.nm_equipamento || nomeLocal || 'Local Mapeado';
-                let blocosDoLocal = { type: "FeatureCollection", features: geojsonBlocos.features ? geojsonBlocos.features.filter(f => f.properties && f.properties.nm_equipamento === nomeLocal) : [] };
+                const tituloObra = p.Equipamento || p.nm_equipamento || nomeLocal || 'Local Mapeado';
+                
+                let blocosDoLocal = { type: "FeatureCollection", features: geojsonBlocos.features ? geojsonBlocos.features.filter(f => f.properties && (f.properties.Equipamento === nomeLocal || f.properties.nm_equipamento === nomeLocal)) : [] };
                 const temBlocos = blocosDoLocal.features.length > 0;
 
                 const avisoBlocos = temBlocos ? `<i style="color: #E65100; font-size: 11px;">(Clique nos blocos coloridos)</i>` : `<i style="color: #666; font-size: 11px;">(Sem blocos)</i>`;
 
+                // Construção Inteligente dos Dados do Popup
+                let mod = p['Modalidade da Concessão'] || p.tx_modalidade_concessao;
+                let conc = p['Concessionária'] || p.nm_concessionaria;
+                let poder = p['Poder Concedente'];
+                let area = p['Área'];
+                let inv = p['Investimento'] || p.qt_investimento_real;
+                let prazo = p['Prazo da Concessão'] || p.qt_prazo_concessao;
+
                 let listaDetalhes = '';
-                if (p.tx_modalidade_concessao) listaDetalhes += `<b>Modalidade:</b> ${p.tx_modalidade_concessao}<br>`;
-                if (p.qt_investimento_real) listaDetalhes += `<b>Investimento:</b> R$ ${Number(p.qt_investimento_real).toLocaleString('pt-BR')}<br>`;
+                if (mod) listaDetalhes += `<b>Modalidade:</b> ${mod}<br>`;
+                if (conc) listaDetalhes += `<b>Concessionária:</b> ${conc}<br>`;
+                if (poder) listaDetalhes += `<b>Poder Concedente:</b> ${poder}<br>`;
+                
+                // Formatação Inteligente da Área (Padrão PT-BR com m²)
+                if (area) {
+                    const areaFormatada = Number(area).toLocaleString('pt-BR');
+                    listaDetalhes += `<b>Área:</b> ${areaFormatada} m²<br>`;
+                }
+                
+                if (inv) listaDetalhes += `<b>Investimento:</b> R$ ${Number(inv).toLocaleString('pt-BR')}<br>`;
+                if (prazo) listaDetalhes += `<b>Prazo:</b> ${prazo} anos<br>`;
+                
                 const separador = listaDetalhes !== '' ? `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;">` : ``;
 
                 let gruposInfra = {};
-                const chavesIgnoradas = ['nm_equipamento', 'distrito', 'tx_modalidade_concessao', 'nm_concessionaria', 'qt_investimento_real', 'qt_prazo_concessao', 'Bloco', 'bloco', 'Nome', 'nome'];
+                const chavesIgnoradas = ['Equipamento', 'nm_equipamento', 'distrito', 'Modalidade da Concessão', 'tx_modalidade_concessao', 'Concessionária', 'nm_concessionaria', 'Investimento', 'qt_investimento_real', 'Prazo da Concessão', 'qt_prazo_concessao', 'Poder Concedente', 'Área', 'Bloco', 'bloco', 'Nome', 'nome'];
+                
                 for (const [chave, valor] of Object.entries(p)) {
                     if (!chavesIgnoradas.includes(chave) && valor !== null && valor !== "" && valor > 0) {
                         let cat = "Outras Informações", item = chave;
@@ -294,7 +315,7 @@
                 
                 let infraPerimetroHTML = '';
                 if (Object.keys(gruposInfra).length > 0) {
-                    infraPerimetroHTML += `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;"><b>Geral:</b>`;
+                    infraPerimetroHTML += `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;"><b>Infraestrutura Prevista/Geral:</b>`;
                     for (const cat in gruposInfra) {
                         infraPerimetroHTML += `<div style="margin-top:6px; color:#00506E;"><b>${cat}:</b></div><ul>`;
                         gruposInfra[cat].forEach(i => infraPerimetroHTML += `<li>${i.nome} : ${i.qtd}</li>`);
@@ -348,14 +369,10 @@
 
                 perimetrosLayer.addTo(map); blocosLayer.addTo(map);
                 
-                // MÁGICA FINAL DO ZOOM AJUSTADA PARA O NÍVEL MÁXIMO 16
                 boundsLocalAtual = camadaPerimetro.getBounds();
                 map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 16 });
             }
 
-            // =====================================================================
-            // NOVO SISTEMA DE RETORNO (RECONSTRUÇÃO ATIVA DAS CAMADAS)
-            // =====================================================================
             map.on('click', function () {
                 if (currentState === 3) { 
                     map.closePopup(); perimetrosLayer.clearLayers(); blocosLayer.clearLayers(); 
@@ -378,16 +395,15 @@
             });
 
             // =====================================================================
-            // 3. O ROTEADOR INTELIGENTE (Define o Nível com Reconstrução Perfeita)
+            // 3. O ROTEADOR INTELIGENTE
             // =====================================================================
             const subsAtivas = Object.keys(contagemSub).filter(k => contagemSub[k].total > 0);
             const distsAtivos = Object.keys(contagemDist).filter(k => contagemDist[k].total > 0);
             const numLocais = geojsonPerimetros.features ? geojsonPerimetros.features.length : 0;
 
             if (numLocais === 1) {
-                // ROTA A: Pula tudo e vai direto para o zoom local do Perímetro
                 const featureUnica = geojsonPerimetros.features[0];
-                const nomeLocalUnico = featureUnica.properties.nm_equipamento || 'Local Mapeado';
+                const nomeLocalUnico = featureUnica.properties.Equipamento || featureUnica.properties.nm_equipamento || 'Local Mapeado';
                 const distUnico = featureUnica.properties.distrito;
                 const subUnica = buscarSubprefeitura(distUnico);
 
@@ -402,7 +418,6 @@
                 mostrarPerimetroLocal(nomeLocalUnico, featureUnica);
 
             } else if (distsAtivos.length === 1 && numLocais > 1) {
-                // ROTA B: Pula pra visão de Pins no Distrito
                 const distUnico = distsAtivos[0];
                 const subUnica = buscarSubprefeitura(distUnico);
 
@@ -418,7 +433,6 @@
                     }
                 }
             } else if (subsAtivas.length === 1 && distsAtivos.length > 1) {
-                // ROTA C: Pula pra visão de Subprefeitura
                 const subUnica = subsAtivas[0];
                 subprefeituraAtual = subUnica;
                 
@@ -429,7 +443,6 @@
                     map.fitBounds(boundsSubprefeituraAtual);
                 }
             } else {
-                // ROTA D: Visão geral da cidade (Padrão)
                 renderizarSubprefeituras(); 
                 if (subprefeiturasLayer) {
                     map.fitBounds(subprefeiturasLayer.getBounds(), { padding: [0, 0] });
