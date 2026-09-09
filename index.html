@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mapa Interativo - São Paulo (Roteamento Inteligente e Formatação Numérica)</title>
+    <title>Mapa Interativo - São Paulo (Roteamento via Dicionário de Dados)</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
@@ -15,7 +15,7 @@
             overflow: hidden;
         }
         #map { width: 100%; height: 100%; background-color: #ededed; cursor: default; }
-        .leaflet-tooltip { background-color: #2b2b2b; color: #ffffff; border: 1px solid #444; font-weight: bold; border-radius: 4px; padding: 4px 8px; }
+        .leaflet-tooltip { background-color: #1e1e1e; color: #ffffff; border: 1px solid #444; font-weight: bold; border-radius: 4px; padding: 4px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
         .leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before, .leaflet-tooltip-left:before, .leaflet-tooltip-right:before { border-color: transparent !important; }
         .badge-local { background-color: #F08200; color: white; font-weight: bold; font-size: 14px; border: 2px solid #fff; border-radius: 50%; text-align: center; line-height: 26px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
         .custom-svg-pin { background: transparent; border: none; }
@@ -30,12 +30,11 @@
         .popup-blocos::-webkit-scrollbar-thumb:hover { background: #555; }
         #loading { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(237, 237, 237, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 16px; color: #00506E; font-weight: bold; text-align: center; padding: 20px;}
         
-        /* Novo estilo para o Indicador de Camada */
         #indicador-camada {
             position: absolute;
             top: 20px;
             left: 50px;
-            background-color: rgba(0, 80, 110, 0.9);
+            background-color: #1e1e1e;
             color: #ffffff;
             padding: 8px 16px;
             font-size: 14px;
@@ -44,7 +43,7 @@
             z-index: 1000;
             box-shadow: 0 2px 6px rgba(0,0,0,0.4);
             pointer-events: none;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
     </style>
 </head>
@@ -74,7 +73,6 @@
             const locaisFiltrados = localParam ? localParam.split(',').map(l => normalizarTexto(l)).filter(l => l) : [];
 
             const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
-            // URL presumida para Regiões (ajuste se o nome do arquivo for diferente)
             const urlRegioes = baseUrl + 'divisaoadm/regioes.geojson'; 
             const urlSubprefeituras = baseUrl + 'divisaoadm/subprefeituras.geojson';
             const urlDistritos = baseUrl + 'divisaoadm/distritos.geojson';
@@ -138,13 +136,78 @@
             document.getElementById('loading').innerHTML = `<span style="color:#C62828;">Erro Crítico no Script:<br>${fatalErr.message}</span>`;
         }
 
-        // =====================================================================
-        // 2. SISTEMA CENTRAL E ROTEAMENTO (UX FLUIDA COM REGIÕES)
-        // =====================================================================
         function inicializarSistema() {
             
-            // 2.1 Enriquecer Perímetros com Distritos
-            if (distritosGeoJSON.features && geojsonPerimetros.features) {
+            // Dicionário Estrito: Distritos -> Subprefeituras
+            const dictDistritoParaSub = {
+                "água rasa": "Mooca", "alto de pinheiros": "Pinheiros", "anhanguera": "Perus", "aricanduva": "Aricanduva", 
+                "artur alvim": "Penha", "barra funda": "Lapa", "bela vista": "Sé", "belém": "Mooca", "bom retiro": "Sé", 
+                "brás": "Mooca", "brasilândia": "Freguesia do Ó", "butantã": "Butantã", "cachoeirinha": "Casa Verde", 
+                "cambuci": "Sé", "campo belo": "Santo Amaro", "campo grande": "Santo Amaro", "campo limpo": "Campo Limpo", 
+                "cangaiba": "Penha", "capão redondo": "Campo Limpo", "carrão": "Aricanduva", "casa verde": "Casa Verde", 
+                "cidade ademar": "Cidade Ademar", "cidade dutra": "Capela do Socorro", "cidade líder": "Itaquera", 
+                "cidade tiradentes": "Cidade Tiradentes", "consolação": "Sé", "cursino": "Ipiranga", "ermelino matarazzo": "Ermelino Matarazzo", 
+                "freguesia do ó": "Freguesia do Ó", "grajaú": "Capela do Socorro", "guaianases": "Guaianases", "iguatemi": "São Mateus", 
+                "ipiranga": "Ipiranga", "itaim bibi": "Pinheiros", "itaim paulista": "Itaim Paulista", "itaquera": "Itaquera", 
+                "jabaquara": "Jabaquara", "jaçanã": "Jaçanã", "jaguara": "Lapa", "jaguaré": "Lapa", "jaraguá": "Pirituba", 
+                "jardim ângela": "MBoi Mirim", "jardim helena": "São Miguel", "jardim paulista": "Pinheiros", 
+                "jardim são luís": "MBoi Mirim", "josé bonifácio": "Itaquera", "lajeado": "Guaianases", "lapa": "Lapa", 
+                "liberdade": "Sé", "limão": "Casa Verde", "mandaqui": "Santana", "marsilac": "Parelheiros", "moema": "Vila Mariana", 
+                "mooca": "Mooca", "morumbi": "Butantã", "parelheiros": "Parelheiros", "pari": "Mooca", "parque do carmo": "Itaquera", 
+                "pedreira": "Cidade Ademar", "penha": "Penha", "perdizes": "Lapa", "perus": "Perus", "pinheiros": "Pinheiros", 
+                "pirituba": "Pirituba", "ponte rasa": "Ermelino Matarazzo", "raposo tavares": "Butantã", "república": "Sé", 
+                "rio pequeno": "Butantã", "sacomã": "Ipiranga", "santa cecília": "Sé", "santana": "Santana", "santo amaro": "Santo Amaro", 
+                "são domingos": "Pirituba", "são lucas": "Vila Prudente", "são mateus": "São Mateus", "são miguel": "São Miguel", 
+                "são rafael": "São Mateus", "sapopemba": "Sapopemba", "saúde": "Vila Mariana", "sé": "Sé", "socorro": "Capela do Socorro", 
+                "tatuapé": "Mooca", "tremembé": "Jaçanã", "tucuruvi": "Santana", "vila andrade": "Campo Limpo", "vila curuçá": "Itaim Paulista", 
+                "vila formosa": "Aricanduva", "vila guilherme": "Vila Maria-Vila Guilherme", "vila jacuí": "São Miguel", "vila leopoldina": "Lapa", 
+                "vila maria": "Vila Maria-Vila Guilherme", "vila mariana": "Vila Mariana", "vila matilde": "Penha", 
+                "vila medeiros": "Vila Maria-Vila Guilherme", "vila prudente": "Vila Prudente", "vila sônia": "Butantã"
+            };
+
+            // Dicionário Estrito: Subprefeituras -> Regiões
+            const dictSubParaRegiao = {
+                "sé": "Centro", "centro": "Centro",
+                "butantã": "Oeste", "lapa": "Oeste", "pinheiros": "Oeste",
+                "casa verde": "Norte", "cachoeirinha": "Norte", "freguesia do ó": "Norte", "brasilândia": "Norte", 
+                "jaçanã": "Norte", "tremembé": "Norte", "perus": "Norte", "anhanguera": "Norte", "pirituba": "Norte", 
+                "jaraguá": "Norte", "santana": "Norte", "tucuruvi": "Norte", "vila maria": "Norte", "vila guilherme": "Norte", 
+                "vila maria-vila guilherme": "Norte", "casa verde-cachoeirinha": "Norte", "pirituba-jaraguá": "Norte", 
+                "freguesia-brasilândia": "Norte", "jaçanã-tremembé": "Norte", "casa verde/cachoeirinha": "Norte",
+                "aricanduva": "Leste", "formosa": "Leste", "carrão": "Leste", "aricanduva-formosa-carrão": "Leste", 
+                "cidade tiradentes": "Leste", "ermelino matarazzo": "Leste", "guaianases": "Leste", "itaquera": "Leste", 
+                "itaim paulista": "Leste", "mooca": "Leste", "penha": "Leste", "são mateus": "Leste", "são miguel": "Leste", 
+                "sapopemba": "Leste", "vila prudente": "Leste",
+                "campo limpo": "Sul", "capela do socorro": "Sul", "cidade ademar": "Sul", "ipiranga": "Sul", 
+                "jabaquara": "Sul", "mboi mirim": "Sul", "parelheiros": "Sul", "santo amaro": "Sul", "vila mariana": "Sul"
+            };
+
+            function buscarSubprefeitura(nomeDistrito) {
+                if (!nomeDistrito) return undefined;
+                return dictDistritoParaSub[nomeDistrito.toLowerCase().trim()];
+            }
+
+            function buscarRegiao(nomeSub) {
+                if (!nomeSub) return "Desconhecida";
+                return dictSubParaRegiao[nomeSub.toLowerCase().trim()] || "Desconhecida";
+            }
+
+            // Atribuição via dicionário direto
+            if (subprefeiturasGeoJSON && subprefeiturasGeoJSON.features) {
+                subprefeiturasGeoJSON.features.forEach(f => {
+                    const nomeSub = f.properties.name || f.properties.nome;
+                    f.properties.regiao = buscarRegiao(nomeSub);
+                });
+            }
+
+            if (distritosGeoJSON && distritosGeoJSON.features) {
+                distritosGeoJSON.features.forEach(f => {
+                    const nomeDist = f.properties.nm_distrito_municipal;
+                    f.properties.subprefeitura = buscarSubprefeitura(nomeDist);
+                });
+            }
+
+            if (geojsonPerimetros && geojsonPerimetros.features) {
                 geojsonPerimetros.features.forEach(local => {
                     if (!local.properties.distrito) { 
                         try {
@@ -159,34 +222,6 @@
                     }
                 });
             }
-
-            // 2.2 Enriquecer Subprefeituras com Regiões via Interseção Espacial (Turf)
-            const subToRegiao = {};
-            if (regioesGeoJSON && regioesGeoJSON.features && subprefeiturasGeoJSON.features) {
-                subprefeiturasGeoJSON.features.forEach(subFeat => {
-                    const subName = subFeat.properties.name || subFeat.properties.nome;
-                    try {
-                        const centroide = turf.centroid(subFeat);
-                        for (let r of regioesGeoJSON.features) {
-                            if (turf.booleanPointInPolygon(centroide, r)) {
-                                // Tenta identificar o nome da região (ajuste a propriedade conforme seu geojson)
-                                const regName = r.properties.nome || r.properties.name || r.properties.nm_regiao || r.properties.Regiao;
-                                subToRegiao[subName] = regName;
-                                subFeat.properties.regiao = regName;
-                                break;
-                            }
-                        }
-                    } catch(e) {}
-                });
-            }
-
-            const deParaDistritos = {
-                "Água Rasa": "Mooca", "Alto de Pinheiros": "Pinheiros", "Anhanguera": "Perus", "Aricanduva": "Aricanduva", "Artur Alvim": "Penha", "Barra Funda": "Lapa", "Bela Vista": "Sé", "Belém": "Mooca", "Bom Retiro": "Sé", "Brás": "Mooca", "Brasilândia": "Freguesia do Ó", "Butantã": "Butantã", "Cachoeirinha": "Casa Verde", "Cambuci": "Sé", "Campo Belo": "Santo Amaro", "Campo Grande": "Santo Amaro", "Campo Limpo": "Campo Limpo", "Cangaiba": "Penha", "Capão Redondo": "Campo Limpo", "Carrão": "Aricanduva", "Casa Verde": "Casa Verde", "Cidade Ademar": "Cidade Ademar", "Cidade Dutra": "Capela do Socorro", "Cidade Líder": "Itaquera", "Cidade Tiradentes": "Cidade Tiradentes", "Consolação": "Sé", "Cursino": "Ipiranga", "Ermelino Matarazzo": "Ermelino Matarazzo", "Freguesia do Ó": "Freguesia do Ó", "Grajaú": "Capela do Socorro", "Guaianases": "Guaianases", "Iguatemi": "São Mateus", "Ipiranga": "Ipiranga", "Itaim Bibi": "Pinheiros", "Itaim Paulista": "Itaim Paulista", "Itaquera": "Itaquera", "Jabaquara": "Jabaquara", "Jaçanã": "Jaçanã", "Jaguara": "Lapa", "Jaguaré": "Lapa", "Jaraguá": "Pirituba", "Jardim Ângela": "MBoi Mirim", "Jardim Helena": "São Miguel", "Jardim Paulista": "Pinheiros", "Jardim São Luís": "MBoi Mirim", "José Bonifácio": "Itaquera", "Lajeado": "Guaianases", "Lapa": "Lapa", "Liberdade": "Sé", "Limão": "Casa Verde", "Mandaqui": "Santana", "Marsilac": "Parelheiros", "Moema": "Vila Mariana", "Mooca": "Mooca", "Morumbi": "Butantã", "Parelheiros": "Parelheiros", "Pari": "Mooca", "Parque do Carmo": "Itaquera", "Pedreira": "Cidade Ademar", "Penha": "Penha", "Perdizes": "Lapa", "Perus": "Perus", "Pinheiros": "Pinheiros", "Pirituba": "Pirituba", "Ponte Rasa": "Ermelino Matarazzo", "Raposo Tavares": "Butantã", "República": "Sé", "Rio Pequeno": "Butantã", "Sacomã": "Ipiranga", "Santa Cecília": "Sé", "Santana": "Santana", "Santo Amaro": "Santo Amaro", "São Domingos": "Pirituba", "São Lucas": "Vila Prudente", "São Mateus": "São Mateus", "São Miguel": "São Miguel", "São Rafael": "São Mateus", "Sapopemba": "Sapopemba", "Saúde": "Vila Mariana", "Sé": "Sé", "Socorro": "Capela do Socorro", "Tatuapé": "Mooca", "Tremembé": "Jaçanã", "Tucuruvi": "Santana", "Vila Andrade": "Campo Limpo", "Vila Curuçá": "Itaim Paulista", "Vila Formosa": "Aricanduva", "Vila Guilherme": "Vila Maria-Vila Guilherme", "Vila Jacuí": "São Miguel", "Vila Leopoldina": "Lapa", "Vila Maria": "Vila Maria-Vila Guilherme", "Vila Mariana": "Vila Mariana", "Vila Matilde": "Penha", "Vila Medeiros": "Vila Maria-Vila Guilherme", "Vila Prudente": "Vila Prudente", "Vila Sônia": "Butantã"
-            };
-
-            const deParaDistritosLower = {};
-            for (const chave in deParaDistritos) { deParaDistritosLower[chave.toLowerCase()] = deParaDistritos[chave]; }
-            function buscarSubprefeitura(nome) { return nome ? deParaDistritos[nome] || deParaDistritosLower[nome.toLowerCase()] : undefined; }
             
             const map = L.map('map').setView([-23.5505, -46.6333], 11);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
@@ -196,7 +231,6 @@
 
             const corAzul = "#00506E";
             
-            // Controle de Estados Atualizado: 0=Regiões, 1=Subs, 2=Distritos, 3=Locais, 4=Perimetros
             let currentState = 0;
             let regiaoAtual = null, boundsRegiaoAtual = null;
             let subprefeituraAtual = null, boundsSubprefeituraAtual = null;
@@ -210,7 +244,6 @@
             
             let contagemRegiao = {}, contagemSub = {}, contagemDist = {};
 
-            // Agregar Contagens
             if (geojsonPerimetros.features && geojsonPerimetros.features.length > 0) {
                 geojsonPerimetros.features.forEach(f => {
                     const distrito = f.properties.distrito;
@@ -222,8 +255,8 @@
                             if (!contagemSub[sub]) contagemSub[sub] = { total: 0 };
                             contagemSub[sub].total += 1;
                             
-                            const reg = subToRegiao[sub];
-                            if (reg) {
+                            const reg = buscarRegiao(sub);
+                            if (reg !== "Desconhecida") {
                                 if (!contagemRegiao[reg]) contagemRegiao[reg] = { total: 0 };
                                 contagemRegiao[reg].total += 1;
                             }
@@ -263,13 +296,12 @@
                 return L.divIcon({ className: 'custom-icon', html: `<div class="badge-local">${stats.total || 0}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
             }
 
-            // 1. CAMADA DE REGIÕES
             function renderizarRegioes() {
                 currentState = 0;
                 atualizarIndicadorCamada("Regiões");
                 
                 if (!regioesGeoJSON || !regioesGeoJSON.features || regioesGeoJSON.features.length === 0) {
-                    renderizarSubprefeituras(); // Fallback caso não exista arquivo de regiões
+                    renderizarSubprefeituras(); 
                     return;
                 }
 
@@ -290,15 +322,11 @@
 
                         layer.on('click', function (e) {
                             L.DomEvent.stopPropagation(e);
-                            if (temDadosNoLocal(stats)) {
-                                regiaoAtual = nomeRegiao; 
-                                boundsRegiaoAtual = e.target.getBounds();
-                                map.removeLayer(regioesLayer); badgesReg.removeFrom(map);
-                                map.fitBounds(boundsRegiaoAtual); 
-                                renderizarSubprefeituras(nomeRegiao);
-                            } else {
-                                map.fitBounds(e.target.getBounds());
-                            }
+                            regiaoAtual = nomeRegiao; 
+                            boundsRegiaoAtual = e.target.getBounds();
+                            map.removeLayer(regioesLayer); badgesReg.removeFrom(map);
+                            map.fitBounds(boundsRegiaoAtual); 
+                            renderizarSubprefeituras(nomeRegiao);
                         });
                         layer.bindTooltip(nomeRegiao, { sticky: true });
                     }
@@ -306,7 +334,6 @@
                 badgesReg.addTo(map);
             }
 
-            // 2. CAMADA DE SUBPREFEITURAS
             function renderizarSubprefeituras(nomeRegiaoFiltro = null) {
                 currentState = 1;
                 atualizarIndicadorCamada(nomeRegiaoFiltro ? `Subprefeituras (${nomeRegiaoFiltro})` : "Subprefeituras");
@@ -316,7 +343,11 @@
                 badgesSub.clearLayers(); badgesDist.clearLayers();
 
                 subprefeiturasLayer = L.geoJSON(subprefeiturasGeoJSON, {
-                    filter: f => !nomeRegiaoFiltro || f.properties.regiao === nomeRegiaoFiltro,
+                    filter: f => {
+                        if (!nomeRegiaoFiltro) return true;
+                        const reg = f.properties.regiao;
+                        return reg && reg.toLowerCase() === nomeRegiaoFiltro.toLowerCase();
+                    },
                     style: f => estiloRegiao(f, 'subprefeitura'),
                     onEachFeature: function (feature, layer) {
                         const nomeSub = feature.properties.name || feature.properties.nome;
@@ -329,14 +360,11 @@
 
                         layer.on('click', function (e) {
                             L.DomEvent.stopPropagation(e);
-                            if (temDadosNoLocal(stats)) {
-                                subprefeituraAtual = nomeSub; boundsSubprefeituraAtual = e.target.getBounds();
-                                map.removeLayer(subprefeiturasLayer); badgesSub.removeFrom(map);
-                                map.fitBounds(boundsSubprefeituraAtual); 
-                                renderizarDistritos(nomeSub);
-                            } else {
-                                map.fitBounds(e.target.getBounds());
-                            }
+                            subprefeituraAtual = nomeSub; 
+                            boundsSubprefeituraAtual = e.target.getBounds();
+                            map.removeLayer(subprefeiturasLayer); badgesSub.removeFrom(map);
+                            map.fitBounds(boundsSubprefeituraAtual); 
+                            renderizarDistritos(nomeSub);
                         });
                         layer.bindTooltip(nomeSub, { sticky: true });
                     }
@@ -344,7 +372,6 @@
                 badgesSub.addTo(map);
             }
 
-            // 3. CAMADA DE DISTRITOS
             function renderizarDistritos(nomeSubClicada) {
                 currentState = 2;
                 atualizarIndicadorCamada(`Distritos (${nomeSubClicada})`);
@@ -353,7 +380,10 @@
                 badgesDist.clearLayers();
 
                 distritosLayer = L.geoJSON(distritosGeoJSON, {
-                    filter: f => buscarSubprefeitura(f.properties.nm_distrito_municipal) === nomeSubClicada,
+                    filter: f => {
+                        const subF = f.properties.subprefeitura;
+                        return subF && subF.toLowerCase() === nomeSubClicada.toLowerCase();
+                    },
                     style: f => estiloRegiao(f, 'distrito'),
                     onEachFeature: function (feature, layer) {
                         const nomeDistrito = feature.properties.nm_distrito_municipal;
@@ -375,7 +405,6 @@
                 badgesDist.addTo(map);
             }
 
-            // 4. CAMADA DE LOCAIS (PINS)
             function mostrarPinsDistrito(nomeDistrito, boundsDistrito) {
                 currentState = 3; 
                 distritoAtual = nomeDistrito; boundsDistritoAtual = boundsDistrito;
@@ -403,7 +432,6 @@
                 pinsLocais.addTo(map);
             }
 
-            // 5. CAMADA DE PERÍMETROS E ESTRUTURAS (BLOCOS)
             function mostrarPerimetroLocal(nomeLocal, featurePerimetro) {
                 currentState = 4; 
                 atualizarIndicadorCamada(`Estruturas (${nomeLocal})`);
@@ -441,7 +469,7 @@
                 const separador = listaDetalhes !== '' ? `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;">` : ``;
 
                 let gruposInfra = {};
-                const chavesIgnoradas = ['Equipamento', 'nm_equipamento', 'distrito', 'regiao', 'Modalidade da Concessão', 'tx_modalidade_concessao', 'Concessionária', 'nm_concessionaria', 'Investimento', 'qt_investimento_real', 'Prazo da Concessão', 'qt_prazo_concessao', 'Poder Concedente', 'Área', 'Bloco', 'bloco', 'Nome', 'nome'];
+                const chavesIgnoradas = ['Equipamento', 'nm_equipamento', 'distrito', 'regiao', 'subprefeitura', 'Modalidade da Concessão', 'tx_modalidade_concessao', 'Concessionária', 'nm_concessionaria', 'Investimento', 'qt_investimento_real', 'Prazo da Concessão', 'qt_prazo_concessao', 'Poder Concedente', 'Área', 'Bloco', 'bloco', 'Nome', 'nome'];
                 
                 for (const [chave, valor] of Object.entries(p)) {
                     if (!chavesIgnoradas.includes(chave) && valor !== null && valor !== "" && valor > 0) {
@@ -511,7 +539,6 @@
                 map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 16 });
             }
 
-            // CONTROLE DE NAVEGAÇÃO "PARA CIMA" (DRILL UP) NO CLIQUE DO MAPA
             map.on('click', function () {
                 if (currentState === 4) { 
                     map.closePopup(); perimetrosLayer.clearLayers(); blocosLayer.clearLayers(); 
@@ -542,9 +569,6 @@
                 }
             });
 
-            // =====================================================================
-            // 3. O ROTEADOR INTELIGENTE APRIMORADO
-            // =====================================================================
             const regsAtivas = Object.keys(contagemRegiao).filter(k => contagemRegiao[k].total > 0);
             const subsAtivas = Object.keys(contagemSub).filter(k => contagemSub[k].total > 0);
             const distsAtivos = Object.keys(contagemDist).filter(k => contagemDist[k].total > 0);
@@ -555,7 +579,7 @@
                 const nomeLocalUnico = featureUnica.properties.Equipamento || featureUnica.properties.nm_equipamento || 'Local Mapeado';
                 const distUnico = featureUnica.properties.distrito;
                 const subUnica = buscarSubprefeitura(distUnico);
-                const regUnica = subToRegiao[subUnica];
+                const regUnica = buscarRegiao(subUnica);
 
                 if (distUnico && subUnica) {
                     regiaoAtual = regUnica; subprefeituraAtual = subUnica; distritoAtual = distUnico;
@@ -573,7 +597,7 @@
             } else if (distsAtivos.length === 1 && numLocais > 1) {
                 const distUnico = distsAtivos[0];
                 const subUnica = buscarSubprefeitura(distUnico);
-                const regUnica = subToRegiao[subUnica];
+                const regUnica = buscarRegiao(subUnica);
 
                 if (distUnico && subUnica) {
                     regiaoAtual = regUnica; subprefeituraAtual = subUnica;
@@ -585,7 +609,7 @@
                 }
             } else if (subsAtivas.length === 1 && distsAtivos.length > 1) {
                 const subUnica = subsAtivas[0];
-                const regUnica = subToRegiao[subUnica];
+                const regUnica = buscarRegiao(subUnica);
                 regiaoAtual = regUnica; subprefeituraAtual = subUnica;
                 
                 const featSub = subprefeiturasGeoJSON.features.find(x => x.properties.name === subUnica || x.properties.nome === subUnica);
