@@ -180,7 +180,7 @@
                 "jabaquara": "Sul", "mboi mirim": "Sul", "parelheiros": "Sul", "santo amaro": "Sul", "vila mariana": "Sul"
             };
 
-            // Extratores universais de nomes (Blindagem contra diferenças no GeoJSON)
+            // Extratores universais de nomes blindados e padronizados
             function extrairNomeSub(feature) {
                 if (!feature || !feature.properties) return "Desconhecida";
                 let p = feature.properties;
@@ -198,20 +198,32 @@
             function extrairNomeRegiao(feature) {
                 if (!feature || !feature.properties) return "Desconhecida";
                 let p = feature.properties;
-                let nome = p.Regiao || p.regiao || p.nome || p.name || p.nm_regiao || p.Name || p.NOME || p.REGIAO;
                 
-                if (!nome) {
-                    for (let key in p) {
-                        let val = p[key];
-                        if (typeof val === 'string' && ['centro', 'norte', 'sul', 'leste', 'oeste'].some(r => val.toLowerCase().includes(r))) {
-                            nome = val;
-                            break;
+                // Força um filtro inteligente para retornar exatemente as 5 chaves maestras que batem com as contagens numéricas
+                const regioesValidas = ['centro', 'norte', 'sul', 'leste', 'oeste'];
+                
+                // Tenta propriedades comuns
+                let nomeRaw = p.Regiao || p.regiao || p.nome || p.name || p.nm_regiao || p.Name || p.NOME || p.REGIAO;
+                if (nomeRaw) {
+                    let nLow = nomeRaw.toString().toLowerCase();
+                    for (let r of regioesValidas) {
+                        if (nLow.includes(r)) return r.charAt(0).toUpperCase() + r.slice(1);
+                    }
+                }
+                
+                // Varredura profunda se a propriedade não for óbvia
+                for (let key in p) {
+                    let val = p[key];
+                    if (typeof val === 'string') {
+                        let vLow = val.toLowerCase();
+                        for (let r of regioesValidas) {
+                            if (vLow.includes(r) || vLow === r) {
+                                return r.charAt(0).toUpperCase() + r.slice(1);
+                            }
                         }
                     }
                 }
-                if (!nome) return "Desconhecida";
-                nome = nome.toString().trim();
-                return nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase();
+                return "Desconhecida";
             }
 
             function buscarSubprefeitura(nomeDistrito) {
@@ -223,7 +235,6 @@
                 if (!nomeSub) return "Desconhecida";
                 const nNorm = nomeSub.toLowerCase().trim();
                 if (dictSubParaRegiao[nNorm]) return dictSubParaRegiao[nNorm];
-                // Busca aproximada caso o nome esteja escrito diferente (Ex: M'Boi Mirim)
                 for (let key in dictSubParaRegiao) {
                     if (nNorm.includes(key) || key.includes(nNorm)) {
                         return dictSubParaRegiao[key];
@@ -358,7 +369,10 @@
                         layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'regiao')));
                         layer.on('mouseout', () => regioesLayer.resetStyle(layer));
                         
-                        if (temDadosNoLocal(stats)) L.marker(layer.getBounds().getCenter(), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesReg);
+                        // Garante que a contagem númerica da região apareça na tela
+                        if (temDadosNoLocal(stats)) {
+                            L.marker(layer.getBounds().getCenter(), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesReg);
+                        }
 
                         layer.on('click', function (e) {
                             L.DomEvent.stopPropagation(e);
@@ -392,7 +406,6 @@
                         if (!nomeRegiaoFiltro) return true;
                         const reg = f.properties.regiao; 
                         if (!reg || reg === "Desconhecida") return false;
-                        // Filtro Flexível Bidirecional (Aceita Leste = Região Leste ou Região Leste = Leste)
                         return reg.toLowerCase().includes(nomeRegiaoFiltro.toLowerCase()) || nomeRegiaoFiltro.toLowerCase().includes(reg.toLowerCase());
                     },
                     style: f => estiloRegiao(f, 'subprefeitura'),
