@@ -138,7 +138,6 @@
 
         function inicializarSistema() {
             
-            // Dicionário Estrito: Distritos -> Subprefeituras
             const dictDistritoParaSub = {
                 "água rasa": "Mooca", "alto de pinheiros": "Pinheiros", "anhanguera": "Perus", "aricanduva": "Aricanduva", 
                 "artur alvim": "Penha", "barra funda": "Lapa", "bela vista": "Sé", "belém": "Mooca", "bom retiro": "Sé", 
@@ -165,7 +164,6 @@
                 "vila medeiros": "Vila Maria-Vila Guilherme", "vila prudente": "Vila Prudente", "vila sônia": "Butantã"
             };
 
-            // Dicionário Estrito: Subprefeituras -> Regiões
             const dictSubParaRegiao = {
                 "sé": "Centro", "centro": "Centro",
                 "butantã": "Oeste", "lapa": "Oeste", "pinheiros": "Oeste",
@@ -182,6 +180,40 @@
                 "jabaquara": "Sul", "mboi mirim": "Sul", "parelheiros": "Sul", "santo amaro": "Sul", "vila mariana": "Sul"
             };
 
+            // Extratores universais de nomes (Blindagem contra diferenças no GeoJSON)
+            function extrairNomeSub(feature) {
+                if (!feature || !feature.properties) return "Desconhecida";
+                let p = feature.properties;
+                let nome = p.name || p.nome || p.sp_nome || p.NOME_SUB || p.sp_name || p.Name || p.NOME || p.subprefeitura || p.SUBPREFEITURA;
+                return nome ? nome.toString().trim() : "Desconhecida";
+            }
+
+            function extrairNomeDistrito(feature) {
+                if (!feature || !feature.properties) return "Desconhecido";
+                let p = feature.properties;
+                let nome = p.nm_distrito_municipal || p.ds_nome || p.nome || p.name || p.NOME || p.distrito || p.DISTRITO;
+                return nome ? nome.toString().trim() : "Desconhecido";
+            }
+            
+            function extrairNomeRegiao(feature) {
+                if (!feature || !feature.properties) return "Desconhecida";
+                let p = feature.properties;
+                let nome = p.Regiao || p.regiao || p.nome || p.name || p.nm_regiao || p.Name || p.NOME || p.REGIAO;
+                
+                if (!nome) {
+                    for (let key in p) {
+                        let val = p[key];
+                        if (typeof val === 'string' && ['centro', 'norte', 'sul', 'leste', 'oeste'].some(r => val.toLowerCase().includes(r))) {
+                            nome = val;
+                            break;
+                        }
+                    }
+                }
+                if (!nome) return "Desconhecida";
+                nome = nome.toString().trim();
+                return nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase();
+            }
+
             function buscarSubprefeitura(nomeDistrito) {
                 if (!nomeDistrito) return undefined;
                 return dictDistritoParaSub[nomeDistrito.toLowerCase().trim()];
@@ -189,43 +221,28 @@
 
             function buscarRegiao(nomeSub) {
                 if (!nomeSub) return "Desconhecida";
-                return dictSubParaRegiao[nomeSub.toLowerCase().trim()] || "Desconhecida";
-            }
-            
-            // Função Segura para Extrair Nome da Região do GeoJSON de Regiões independentemente do nome da propriedade
-            function extrairNomeRegiao(feature) {
-                if (!feature || !feature.properties) return "Desconhecida";
-                let p = feature.properties;
-                let nome = p.Regiao || p.regiao || p.nome || p.name || p.nm_regiao || p.Name || p.NOME || p.REGIAO;
-                
-                // Fallback heurístico caso a key mude
-                if (!nome) {
-                    for (let key in p) {
-                        let val = p[key];
-                        if (typeof val === 'string' && ['centro', 'norte', 'sul', 'leste', 'oeste'].includes(val.toLowerCase().trim())) {
-                            nome = val;
-                            break;
-                        }
+                const nNorm = nomeSub.toLowerCase().trim();
+                if (dictSubParaRegiao[nNorm]) return dictSubParaRegiao[nNorm];
+                // Busca aproximada caso o nome esteja escrito diferente (Ex: M'Boi Mirim)
+                for (let key in dictSubParaRegiao) {
+                    if (nNorm.includes(key) || key.includes(nNorm)) {
+                        return dictSubParaRegiao[key];
                     }
                 }
-                if (!nome) return "Desconhecida";
-                
-                // Normaliza para garantir conformidade com o dicionário (ex: de "leste" para "Leste")
-                nome = nome.trim();
-                return nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase();
+                return "Desconhecida";
             }
 
             // Atribuição via dicionário direto
             if (subprefeiturasGeoJSON && subprefeiturasGeoJSON.features) {
                 subprefeiturasGeoJSON.features.forEach(f => {
-                    const nomeSub = f.properties.name || f.properties.nome;
+                    const nomeSub = extrairNomeSub(f);
                     f.properties.regiao = buscarRegiao(nomeSub);
                 });
             }
 
             if (distritosGeoJSON && distritosGeoJSON.features) {
                 distritosGeoJSON.features.forEach(f => {
-                    const nomeDist = f.properties.nm_distrito_municipal;
+                    const nomeDist = extrairNomeDistrito(f);
                     f.properties.subprefeitura = buscarSubprefeitura(nomeDist);
                 });
             }
@@ -237,7 +254,7 @@
                             const centroide = turf.centroid(local);
                             for (let f of distritosGeoJSON.features) {
                                 if (turf.booleanPointInPolygon(centroide, f)) {
-                                    local.properties.distrito = f.properties.nm_distrito_municipal;
+                                    local.properties.distrito = extrairNomeDistrito(f);
                                     break;
                                 }
                             }
@@ -301,10 +318,10 @@
                     nome = extrairNomeRegiao(feature);
                     stats = contagemRegiao[nome];
                 } else if (nivel === 'subprefeitura') {
-                    nome = feature.properties.name || feature.properties.nome;
+                    nome = extrairNomeSub(feature);
                     stats = contagemSub[nome];
                 } else {
-                    nome = feature.properties.nm_distrito_municipal;
+                    nome = extrairNomeDistrito(feature);
                     stats = contagemDist[nome];
                 }
                 return temDadosNoLocal(stats) ? { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.35 } : { color: corAzul, weight: 1, fillColor: corAzul, fillOpacity: 0 };
@@ -345,12 +362,12 @@
 
                         layer.on('click', function (e) {
                             L.DomEvent.stopPropagation(e);
-                            if (temDadosNoLocal(stats) || true) { // Permitir clique mesmo sem dados 
+                            if (temDadosNoLocal(stats) || true) { 
                                 regiaoAtual = nomeRegiao; 
                                 boundsRegiaoAtual = e.target.getBounds();
                                 map.removeLayer(regioesLayer); badgesReg.removeFrom(map);
                                 map.fitBounds(boundsRegiaoAtual); 
-                                renderizarSubprefeituras(nomeRegiao); // Repassa o nome correto para filtro das subs
+                                renderizarSubprefeituras(nomeRegiao);
                             }
                         });
                         
@@ -372,14 +389,15 @@
 
                 subprefeiturasLayer = L.geoJSON(subprefeiturasGeoJSON, {
                     filter: f => {
-                        // Garante que apenas Subprefeituras da Região clicada sejam desenhadas
                         if (!nomeRegiaoFiltro) return true;
                         const reg = f.properties.regiao; 
-                        return reg && reg.toLowerCase() === nomeRegiaoFiltro.toLowerCase();
+                        if (!reg || reg === "Desconhecida") return false;
+                        // Filtro Flexível Bidirecional (Aceita Leste = Região Leste ou Região Leste = Leste)
+                        return reg.toLowerCase().includes(nomeRegiaoFiltro.toLowerCase()) || nomeRegiaoFiltro.toLowerCase().includes(reg.toLowerCase());
                     },
                     style: f => estiloRegiao(f, 'subprefeitura'),
                     onEachFeature: function (feature, layer) {
-                        const nomeSub = feature.properties.name || feature.properties.nome;
+                        const nomeSub = extrairNomeSub(feature);
                         const stats = contagemSub[nomeSub];
 
                         layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'subprefeitura')));
@@ -415,7 +433,7 @@
                     },
                     style: f => estiloRegiao(f, 'distrito'),
                     onEachFeature: function (feature, layer) {
-                        const nomeDistrito = feature.properties.nm_distrito_municipal;
+                        const nomeDistrito = extrairNomeDistrito(feature);
                         const stats = contagemDist[nomeDistrito];
 
                         layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'distrito')));
@@ -442,7 +460,7 @@
                 if (distritosLayer) map.removeLayer(distritosLayer); badgesDist.removeFrom(map);
                 distritoSelecionadoLayer.clearLayers(); pinsLocais.clearLayers(); perimetrosLayer.clearLayers(); blocosLayer.clearLayers(); map.closePopup();
 
-                const featDistrito = distritosGeoJSON.features.find(f => f.properties.nm_distrito_municipal === nomeDistrito);
+                const featDistrito = distritosGeoJSON.features.find(f => extrairNomeDistrito(f) === nomeDistrito);
                 if (featDistrito) L.geoJSON(featDistrito, { style: { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.1, dashArray: "4, 4" }, interactive: false }).addTo(distritoSelecionadoLayer);
                 distritoSelecionadoLayer.addTo(map); 
                 map.fitBounds(boundsDistrito);
@@ -616,9 +634,9 @@
                         const featReg = regioesGeoJSON.features.find(x => extrairNomeRegiao(x) === regUnica);
                         if (featReg) boundsRegiaoAtual = L.geoJSON(featReg).getBounds();
                     }
-                    const featSub = subprefeiturasGeoJSON.features.find(x => x.properties.name === subUnica || x.properties.nome === subUnica);
+                    const featSub = subprefeiturasGeoJSON.features.find(x => extrairNomeSub(x) === subUnica);
                     if (featSub) boundsSubprefeituraAtual = L.geoJSON(featSub).getBounds();
-                    const featDist = distritosGeoJSON.features.find(x => x.properties.nm_distrito_municipal === distUnico);
+                    const featDist = distritosGeoJSON.features.find(x => extrairNomeDistrito(x) === distUnico);
                     if (featDist) boundsDistritoAtual = L.geoJSON(featDist).getBounds();
                 }
                 mostrarPerimetroLocal(nomeLocalUnico, featureUnica);
@@ -630,7 +648,7 @@
 
                 if (distUnico && subUnica) {
                     regiaoAtual = regUnica; subprefeituraAtual = subUnica;
-                    const featDist = distritosGeoJSON.features.find(x => x.properties.nm_distrito_municipal === distUnico);
+                    const featDist = distritosGeoJSON.features.find(x => extrairNomeDistrito(x) === distUnico);
                     if (featDist) {
                         boundsDistritoAtual = L.geoJSON(featDist).getBounds();
                         mostrarPinsDistrito(distUnico, boundsDistritoAtual);
@@ -641,7 +659,7 @@
                 const regUnica = buscarRegiao(subUnica);
                 regiaoAtual = regUnica; subprefeituraAtual = subUnica;
                 
-                const featSub = subprefeiturasGeoJSON.features.find(x => x.properties.name === subUnica || x.properties.nome === subUnica);
+                const featSub = subprefeiturasGeoJSON.features.find(x => extrairNomeSub(x) === subUnica);
                 if (featSub) {
                     boundsSubprefeituraAtual = L.geoJSON(featSub).getBounds();
                     renderizarDistritos(subUnica);
