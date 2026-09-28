@@ -380,6 +380,7 @@
             const corAzul = "#00506E";
             
             let currentState = 0;
+            let voltarAoPerimetroAtual = null;
             let regiaoAtual = null, boundsRegiaoAtual = null;
             let subprefeituraAtual = null, boundsSubprefeituraAtual = null;
             let distritoAtual = null, boundsDistritoAtual = null;
@@ -590,6 +591,7 @@
             }
 
             function mostrarPerimetroLocal(nomeLocal, featurePerimetro) {
+                voltarAoPerimetroAtual = () => mostrarPerimetroLocal(nomeLocal, featurePerimetro);
                 currentState = 4; 
                 atualizarIndicadorCamada(`Perímetro (${escaparHTML(nomeLocal)})`);
                 
@@ -646,7 +648,12 @@
                 });
                 camadaPerimetro.on('click', function(e) {
                     L.DomEvent.stopPropagation(e);
-                    mostrarItensLocal();
+                    if (currentState === 5) {
+                        // Clicar na área do perímetro fora dos itens também volta um nível.
+                        voltarAoPerimetroAtual();
+                    } else {
+                        mostrarItensLocal();
+                    }
                 });
 
                 function estiloItem(f) {
@@ -663,6 +670,7 @@
                 function mostrarItensLocal() {
                     if (itensExibidos || !temItens) return;
                     itensExibidos = true;
+                    currentState = 5;
                     camadaPerimetro.closeTooltip();
                     camadaPerimetro.unbindTooltip();
                     map.closePopup();
@@ -699,7 +707,11 @@
             }
 
             map.on('click', function () {
-                if (currentState === 4) { 
+                if (currentState === 5) {
+                    // Fora dos itens: retorna somente ao perímetro, sem pular para os pins.
+                    voltarAoPerimetroAtual();
+                }
+                else if (currentState === 4) { 
                     map.closePopup(); perimetrosLayer.clearLayers(); itensLayer.clearLayers(); 
                     if (distritoAtual && boundsDistritoAtual) mostrarPinsDistrito(distritoAtual, boundsDistritoAtual);
                     else renderizarSubprefeituras(regiaoAtual);
