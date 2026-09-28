@@ -150,6 +150,19 @@
             return String(valor ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         }
 
+        function lerFiltroURL(params, ...chaves) {
+            return [...new Set(chaves.flatMap(chave => params.getAll(chave))
+                .flatMap(valor => valor.split(','))
+                .map(normalizarTexto).filter(Boolean))];
+        }
+
+        function itemAtendeFiltros(feature, filtros) {
+            const ativos = Object.values(filtros).some(nomes => nomes.length > 0);
+            if (!ativos) return true;
+            const nomes = filtros[normalizarTexto(tipoItem(feature))] || [];
+            return nomes.includes(normalizarTexto(nomeItem(feature)));
+        }
+
         // Coloração por saturação: tenta as quatro cores e revisa escolhas quando necessário.
         function colorirVizinhos(vizinhos, quantidadeCores = 4) {
             const cores = Array(vizinhos.length).fill(-1);
@@ -187,11 +200,14 @@
 
         try {
             const urlParams = new URLSearchParams(window.location.search);
-            const grupoParam = urlParams.get('grupo'); 
-            const localParam = urlParams.get('local');
-
-            const grupos = grupoParam ? grupoParam.toLowerCase().split(',').map(g => g.trim()).filter(g => g) : [];
-            const locaisFiltrados = localParam ? localParam.split(',').map(l => normalizarTexto(l)).filter(l => l) : [];
+            const grupos = lerFiltroURL(urlParams, 'grupo', 'grupos');
+            const locaisFiltrados = lerFiltroURL(urlParams, 'local', 'locais');
+            const filtrosItens = {
+                conjunto: lerFiltroURL(urlParams, 'conjunto', 'conjuntos'),
+                bloco: lerFiltroURL(urlParams, 'bloco', 'blocos'),
+                estrutura: lerFiltroURL(urlParams, 'estrutura', 'estruturas')
+            };
+            const temFiltroItens = Object.values(filtrosItens).some(nomes => nomes.length > 0);
 
             const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
             const urlRegioes = baseUrl + 'divisaoadm/regioes.geojson'; 
@@ -245,7 +261,6 @@
                         return locaisFiltrados.includes(nomeEquipNormalizado);
                     });
                 }
-                geojsonPerimetros = { type: "FeatureCollection", features: featuresPerimetros };
 
                 let featuresItens = [];
                 arrayItens.forEach(geo => { if (geo && geo.features) featuresItens = featuresItens.concat(geo.features); });
@@ -256,7 +271,19 @@
                         return locaisFiltrados.includes(nomeEquipNormalizado);
                     });
                 }
-                geojsonItens = { type: "FeatureCollection", features: featuresItens };
+                // Grupo e local restringem a seleção. Tipos diferentes são alternativas:
+                // bloco=A&conjunto=B seleciona o bloco A e o conjunto B.
+                featuresItens = featuresItens.filter(f => itemAtendeFiltros(f, filtrosItens));
+                if (temFiltroItens) {
+                    featuresPerimetros = featuresPerimetros.filter(perimetro =>
+                        featuresItens.some(item => pertenceAoEquipamento(item, perimetro)));
+                }
+                geojsonPerimetros = { type: 'FeatureCollection', features: featuresPerimetros };
+                geojsonItens = { type: 'FeatureCollection', features: featuresItens };
+                if ((temFiltroItens || locaisFiltrados.length > 0) && !featuresPerimetros.length) {
+                    document.getElementById('loading').textContent = 'Nenhum local encontrado para os filtros informados. Confira o grupo, o local e os nomes dos itens na URL.';
+                    return;
+                }
                 
                 const loadingEl = document.getElementById('loading');
                 if (loadingEl) loadingEl.style.display = 'none';
