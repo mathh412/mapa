@@ -21,6 +21,11 @@
         .custom-svg-pin { background: transparent; border: none; }
         .tooltip-hover-local { background-color: #00506E; color: #ffffff; border: 1px solid #fff; font-weight: bold; font-size: 12px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.4); }
         .tooltip-hover-local:before { border-top-color: #00506E !important; }
+        .tooltip-propriedades-perimetro {
+            background: #fff; color: #333; border: 1px solid #ccc;
+            padding: 10px; white-space: normal; font-weight: normal;
+            width: 320px; max-width: calc(100vw - 60px);
+        }
         .popup-blocos { max-height: 250px; overflow-y: auto; font-size: 12px; padding-right: 5px; color: #333; }
         .popup-blocos ul { padding-left: 16px; margin-top: 5px; margin-bottom: 0; }
         .popup-blocos li { margin-bottom: 3px; }
@@ -586,7 +591,7 @@
 
             function mostrarPerimetroLocal(nomeLocal, featurePerimetro) {
                 currentState = 4; 
-                atualizarIndicadorCamada(`Estruturas (${nomeLocal})`);
+                atualizarIndicadorCamada(`Perímetro (${escaparHTML(nomeLocal)})`);
                 
                 pinsLocais.removeFrom(map); perimetrosLayer.clearLayers(); itensLayer.clearLayers(); map.closePopup();
 
@@ -596,7 +601,7 @@
                 let itensDoLocal = { type: "FeatureCollection", features: geojsonItens.features ? geojsonItens.features.filter(f => pertenceAoEquipamento(f, featurePerimetro)) : [] };
                 const temItens = itensDoLocal.features.length > 0;
 
-                const avisoItens = temItens ? `<i style="color: #E65100; font-size: 11px;">(Clique nos blocos, conjuntos ou estruturas)</i>` : `<i style="color: #666; font-size: 11px;">(Sem blocos, conjuntos ou estruturas vinculados)</i>`;
+                const avisoItens = temItens ? `<i style="color: #E65100; font-size: 11px;">(Clique no perímetro para visualizar os blocos, conjuntos ou estruturas)</i>` : `<i style="color: #666; font-size: 11px;">(Sem blocos, conjuntos ou estruturas vinculados)</i>`;
 
                 let mod = p['Modalidade da Concessão'] || p.tx_modalidade_concessao;
                 let conc = p['Concessionária'] || p.nm_concessionaria;
@@ -631,8 +636,18 @@
                 const infoGeralHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong></div>${separador}${listaDetalhes}${infraPerimetroHTML}<div style="text-align:center; margin-top: 8px;">${avisoItens}</div></div>`;
 
                 const camadaPerimetro = L.geoJSON(featurePerimetro, { style: { color: "#E65100", weight: 3, fillColor: "#F57C00", fillOpacity: 0.2, dashArray: "5, 5" } }).addTo(perimetrosLayer);
-                camadaPerimetro.bindTooltip(`<b>${tituloObra}</b>`, { sticky: true });
-                camadaPerimetro.on('click', function(e) { L.DomEvent.stopPropagation(e); L.popup().setLatLng(e.latlng).setContent(infoGeralHTML).openOn(map); });
+                camadaPerimetro.bindTooltip(infoGeralHTML, {
+                    sticky: true,
+                    direction: 'auto',
+                    className: 'tooltip-propriedades-perimetro'
+                });
+                camadaPerimetro.eachLayer(layer => {
+                    layer.options.bubblingMouseEvents = false;
+                });
+                camadaPerimetro.on('click', function(e) {
+                    L.DomEvent.stopPropagation(e);
+                    mostrarItensLocal();
+                });
 
                 function estiloItem(f) {
                     const nome = tipoItem(f) + ':' + nomeItem(f);
@@ -643,30 +658,43 @@
                     return { color: cor.border, weight: 2, fillColor: cor.fill, fillOpacity: 0.65 };
                 }
 
-                if (temItens) {
-                    L.geoJSON(itensDoLocal, {
-                        style: estiloItem,
-                        pointToLayer: (f, latlng) => L.circleMarker(latlng, { ...estiloItem(f), radius: 7 }),
-                        onEachFeature: (f, l) => {
-                            const tituloBloco = escaparHTML(nomeItem(f));
-                            const rotuloTipo = tipoItem(f);
-                            l.bindTooltip(`<b>${tituloObra}</b><br>${rotuloTipo}: ${tituloBloco}`, { sticky: true });
-                            
-                            const gruposInfraBloco = agruparPropriedades(f.properties, ignorarChave);
-                            const listaInfraBlocoHTML = renderizarGrupos(gruposInfraBloco)
-                                || '<ul><li>Sem detalhamento.</li></ul>';
-
-                            const infoBlocoHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br><span style="display:inline-block; margin-top:2px; background:#ddd; padding:2px 5px; border-radius:4px; font-size:10px;">${rotuloTipo.toUpperCase()}: ${tituloBloco}</span></div><hr style="margin: 6px 0;"><b>Detalhes:</b>${listaInfraBlocoHTML}</div>`;
-                            l.bindPopup(infoBlocoHTML); l.on('click', function(e) { L.DomEvent.stopPropagation(e); });
-                        }
-                    }).addTo(itensLayer);
+                // Os itens são desenhados somente após um clique no perímetro.
+                let itensExibidos = false;
+                function mostrarItensLocal() {
+                    if (itensExibidos || !temItens) return;
+                    itensExibidos = true;
+                    camadaPerimetro.closeTooltip();
+                    camadaPerimetro.unbindTooltip();
+                    map.closePopup();
+                    atualizarIndicadorCamada(`Blocos / Conjuntos / Estruturas (${tituloObra})`);
+                    if (temItens) {
+                        L.geoJSON(itensDoLocal, {
+                            style: estiloItem,
+                            pointToLayer: (f, latlng) => L.circleMarker(latlng, { ...estiloItem(f), radius: 7 }),
+                            onEachFeature: (f, l) => {
+                                const tituloBloco = escaparHTML(nomeItem(f));
+                                const rotuloTipo = tipoItem(f);
+                                l.bindTooltip(`<b>${tituloObra}</b><br>${rotuloTipo}: ${tituloBloco}`, { sticky: true });
+                                
+                                const gruposInfraBloco = agruparPropriedades(f.properties, ignorarChave);
+                                const listaInfraBlocoHTML = renderizarGrupos(gruposInfraBloco)
+                                    || '<ul><li>Sem detalhamento.</li></ul>';
+    
+                                const infoBlocoHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br><span style="display:inline-block; margin-top:2px; background:#ddd; padding:2px 5px; border-radius:4px; font-size:10px;">${rotuloTipo.toUpperCase()}: ${tituloBloco}</span></div><hr style="margin: 6px 0;"><b>Detalhes:</b>${listaInfraBlocoHTML}</div>`;
+                                l.options.bubblingMouseEvents = false;
+                                l.bindPopup(infoBlocoHTML); l.on('click', function(e) { L.DomEvent.stopPropagation(e); });
+                            }
+                        }).addTo(itensLayer);
+                    }
+                    itensLayer.addTo(map);
+                    itensLayer.eachLayer(camada => {
+                        if (camada.getBounds && camada.getBounds().isValid()) boundsLocalAtual.extend(camada.getBounds());
+                    });
+                    map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 18 });
                 }
 
-                perimetrosLayer.addTo(map); itensLayer.addTo(map);
+                perimetrosLayer.addTo(map);
                 boundsLocalAtual = camadaPerimetro.getBounds();
-                itensLayer.eachLayer(camada => {
-                    if (camada.getBounds && camada.getBounds().isValid()) boundsLocalAtual.extend(camada.getBounds());
-                });
                 map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 16 });
             }
 
