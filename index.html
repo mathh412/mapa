@@ -289,7 +289,7 @@
                 if (loadingEl) loadingEl.style.display = 'none';
                 
                 document.getElementById('indicador-camada').style.display = 'block';
-                inicializarSistema();
+                inicializarSistema(temFiltroItens);
             }).catch(err => {
                 document.getElementById('loading').innerHTML = `<span style="color:#C62828;">Erro ao processar arquivos da nuvem:<br>${err.message}</span>`;
             });
@@ -298,7 +298,7 @@
             document.getElementById('loading').innerHTML = `<span style="color:#C62828;">Erro Crítico no Script:<br>${fatalErr.message}</span>`;
         }
 
-        function inicializarSistema() {
+        function inicializarSistema(abrirItensFiltrados = false) {
             
             const dictDistritoParaSub = {
                 "água rasa": "Mooca", "alto de pinheiros": "Pinheiros", "anhanguera": "Perus", "aricanduva": "Aricanduva", 
@@ -655,7 +655,7 @@
                 pinsLocais.addTo(map);
             }
 
-            function mostrarPerimetroLocal(nomeLocal, featurePerimetro) {
+            function mostrarPerimetroLocal(nomeLocal, featurePerimetro, abrirDiretamente = false) {
                 voltarAoPerimetroAtual = () => mostrarPerimetroLocal(nomeLocal, featurePerimetro);
                 currentState = 4; 
                 atualizarIndicadorCamada(`Perímetro (${escaparHTML(nomeLocal)})`);
@@ -665,7 +665,10 @@
                 const p = featurePerimetro.properties || {};
                 const tituloObra = escaparHTML(nomeEquipamento(featurePerimetro) || nomeLocal || 'Local Mapeado');
                 
-                let itensDoLocal = { type: "FeatureCollection", features: geojsonItens.features ? geojsonItens.features.filter(f => pertenceAoEquipamento(f, featurePerimetro)) : [] };
+                const perimetrosDoLocal = featurePerimetro.type === 'FeatureCollection'
+                    ? featurePerimetro.features : [featurePerimetro];
+                let itensDoLocal = { type: 'FeatureCollection', features: (geojsonItens.features || [])
+                    .filter(f => perimetrosDoLocal.some(perimetro => pertenceAoEquipamento(f, perimetro))) };
                 const temItens = itensDoLocal.features.length > 0;
 
                 const avisoItens = temItens ? `<i style="color: #E65100; font-size: 11px;">(Clique no perímetro para visualizar os blocos, conjuntos ou estruturas)</i>` : `<i style="color: #666; font-size: 11px;">(Sem blocos, conjuntos ou estruturas vinculados)</i>`;
@@ -825,6 +828,7 @@
                             style: estiloItem,
                             pointToLayer: (f, latlng) => L.circleMarker(latlng, { ...estiloItem(f), radius: 7 }),
                             onEachFeature: (f, l) => {
+                                const tituloObra = escaparHTML(nomeEquipamento(f) || nomeLocal);
                                 const tituloBloco = escaparHTML(nomeItem(f));
                                 const rotuloTipo = tipoItem(f);
                                 l.bindTooltip(`<b>${tituloObra}</b><br>${rotuloTipo}: ${tituloBloco}`, { sticky: true });
@@ -840,15 +844,21 @@
                         }).addTo(itensLayer);
                     }
                     itensLayer.addTo(map);
+                    // Enquadra somente os itens selecionados, sem ampliar para o perímetro.
+                    const boundsItens = L.latLngBounds([]);
                     itensLayer.eachLayer(camada => {
-                        if (camada.getBounds && camada.getBounds().isValid()) boundsLocalAtual.extend(camada.getBounds());
+                        if (camada.getBounds && camada.getBounds().isValid()) boundsItens.extend(camada.getBounds());
                     });
-                    map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 18 });
+                    if (boundsItens.isValid()) map.fitBounds(boundsItens, { padding: [30, 30], maxZoom: 20 });
                 }
 
                 perimetrosLayer.addTo(map);
                 boundsLocalAtual = camadaPerimetro.getBounds();
-                map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 16 });
+                if (abrirDiretamente && temItens) {
+                    mostrarItensLocal();
+                } else {
+                    map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 16 });
+                }
             }
 
             map.on('click', function () {
@@ -908,8 +918,11 @@
                     const featDist = distritosGeoJSON.features.find(x => extrairNomeDistrito(x) === distUnico);
                     if (featDist) boundsDistritoAtual = L.geoJSON(featDist).getBounds();
                 }
-                mostrarPerimetroLocal(nomeLocalUnico, featureUnica);
+                mostrarPerimetroLocal(nomeLocalUnico, featureUnica, abrirItensFiltrados);
 
+            } else if (abrirItensFiltrados && numLocais > 1) {
+                // Uma seleção pode conter itens de mais de um equipamento/grupo.
+                mostrarPerimetroLocal('Locais filtrados', geojsonPerimetros, true);
             } else if (distsAtivos.length === 1 && numLocais > 1) {
                 const distUnico = distsAtivos[0];
                 const subUnica = buscarSubprefeitura(distUnico);
