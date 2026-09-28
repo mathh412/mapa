@@ -57,18 +57,64 @@
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 
     <script>
-        let regioesGeoJSON, subprefeiturasGeoJSON, distritosGeoJSON, geojsonPerimetros, geojsonBlocos;
+        let regioesGeoJSON, subprefeiturasGeoJSON, distritosGeoJSON, geojsonPerimetros, geojsonItens;
+
+        // Os três tipos usam o mesmo vínculo direto com um equipamento.
+        function normalizarTexto(texto) {
+            return String(texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        }
+
+        function propriedade(p, nomes) {
+            for (const nome of nomes) {
+                const chave = Object.keys(p || {}).find(k => normalizarTexto(k) === normalizarTexto(nome)
+                    && p[k] !== null && p[k] !== undefined && String(p[k]).trim() !== '');
+                if (chave !== undefined) return String(p[chave]).trim();
+            }
+            return '';
+        }
+
+        function nomeEquipamento(f) {
+            return propriedade(f.properties, ['Equipamento', 'nm_equipamento']);
+        }
+
+        function tipoItem(f) {
+            const p = f.properties || {};
+            const declarado = normalizarTexto(propriedade(p, ['Tipo', 'Tipo de item', 'tipo_item', 'tipo_estrutura']));
+            const tipos = { bloco: 'Bloco', blocos: 'Bloco', conjunto: 'Conjunto', conjuntos: 'Conjunto', estrutura: 'Estrutura', estruturas: 'Estrutura' };
+            if (tipos[declarado]) return tipos[declarado];
+            // O arquivo específico define o tipo; blocos.geojson também aceita itens mistos.
+            if (f.__tipoArquivo && f.__tipoArquivo !== 'Bloco') return f.__tipoArquivo;
+            for (const tipo of ['Estrutura', 'Conjunto', 'Bloco']) {
+                if (propriedade(p, [tipo, 'nm_' + normalizarTexto(tipo)])) return tipo;
+            }
+            return f.__tipoArquivo || 'Estrutura';
+        }
+
+        function nomeItem(f) {
+            const tipo = tipoItem(f);
+            return propriedade(f.properties, [tipo, 'nm_' + normalizarTexto(tipo), 'Nome', 'name']) || tipo + ' sem nome';
+        }
+
+        function pertenceAoEquipamento(item, equipamento) {
+            const nome = normalizarTexto(nomeEquipamento(item));
+            return nome !== '' && nome === normalizarTexto(nomeEquipamento(equipamento))
+                && item.__grupo === equipamento.__grupo;
+        }
+
+        // Mantém valores numéricos e textos formatados, ocultando apenas campos vazios.
+        function temValorInformado(valor) {
+            return valor !== null && valor !== undefined && String(valor).trim() !== '';
+        }
+
+        function escaparHTML(valor) {
+            return String(valor ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
 
         try {
             const urlParams = new URLSearchParams(window.location.search);
             const grupoParam = urlParams.get('grupo'); 
             const localParam = urlParams.get('local');
 
-            function normalizarTexto(texto) {
-                if (!texto) return '';
-                return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-            }
-            
             const grupos = grupoParam ? grupoParam.toLowerCase().split(',').map(g => g.trim()).filter(g => g) : [];
             const locaisFiltrados = localParam ? localParam.split(',').map(l => normalizarTexto(l)).filter(l => l) : [];
 
@@ -89,14 +135,28 @@
             }
 
             const promessasBase = [fetchSeguro(urlRegioes), fetchSeguro(urlSubprefeituras), fetchSeguro(urlDistritos)];
-            const promessasPerimetros = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + g + '/perimetros.geojson'));
-            const promessasBlocos = grupos.map(g => fetchSeguro(baseUrl + 'grupos/' + g + '/blocos.geojson'));
+            async function carregarGrupo(grupo, arquivo, tipo = null) {
+                const geo = await fetchSeguro(baseUrl + 'grupos/' + grupo + '/' + arquivo);
+                return { type: 'FeatureCollection', features: Array.isArray(geo?.features)
+                    ? geo.features.filter(f => f && f.type === 'Feature' && f.geometry).map(f => ({
+                        ...f, properties: f.properties || {}, __grupo: grupo, __tipoArquivo: tipo
+                    })) : [] };
+            }
+
+            const promessasPerimetros = grupos.map(g => carregarGrupo(g, 'perimetros.geojson'));
+            // Arquivos opcionais: a ausência de um tipo não impede os demais.
+            const fontesItens = [
+                { arquivo: 'blocos.geojson', tipo: 'Bloco' },
+                { arquivo: 'conjuntos.geojson', tipo: 'Conjunto' },
+                { arquivo: 'estruturas.geojson', tipo: 'Estrutura' }
+            ];
+            const promessasItens = grupos.flatMap(g => fontesItens.map(f => carregarGrupo(g, f.arquivo, f.tipo)));
 
             Promise.all([
                 Promise.all(promessasBase),
                 Promise.all(promessasPerimetros),
-                Promise.all(promessasBlocos)
-            ]).then(([[reg, sub, dist], arrayPerimetros, arrayBlocos]) => {
+                Promise.all(promessasItens)
+            ]).then(([[reg, sub, dist], arrayPerimetros, arrayItens]) => {
                 regioesGeoJSON = reg;
                 subprefeiturasGeoJSON = sub;
                 distritosGeoJSON = dist;
@@ -106,22 +166,22 @@
                 
                 if (locaisFiltrados.length > 0) {
                     featuresPerimetros = featuresPerimetros.filter(f => {
-                        const nomeEquipNormalizado = normalizarTexto(f.properties.Equipamento || f.properties.nm_equipamento);
+                        const nomeEquipNormalizado = normalizarTexto(nomeEquipamento(f));
                         return locaisFiltrados.includes(nomeEquipNormalizado);
                     });
                 }
                 geojsonPerimetros = { type: "FeatureCollection", features: featuresPerimetros };
 
-                let featuresBlocos = [];
-                arrayBlocos.forEach(geo => { if (geo && geo.features) featuresBlocos = featuresBlocos.concat(geo.features); });
+                let featuresItens = [];
+                arrayItens.forEach(geo => { if (geo && geo.features) featuresItens = featuresItens.concat(geo.features); });
 
                 if (locaisFiltrados.length > 0) {
-                    featuresBlocos = featuresBlocos.filter(f => {
-                        const nomeEquipNormalizado = normalizarTexto(f.properties.Equipamento || f.properties.nm_equipamento);
+                    featuresItens = featuresItens.filter(f => {
+                        const nomeEquipNormalizado = normalizarTexto(nomeEquipamento(f));
                         return locaisFiltrados.includes(nomeEquipNormalizado);
                     });
                 }
-                geojsonBlocos = { type: "FeatureCollection", features: featuresBlocos };
+                geojsonItens = { type: "FeatureCollection", features: featuresItens };
                 
                 const loadingEl = document.getElementById('loading');
                 if (loadingEl) loadingEl.style.display = 'none';
@@ -291,7 +351,7 @@
             let regioesLayer;
             let subprefeiturasLayer, distritosLayer, distritoSelecionadoLayer = L.layerGroup(); 
             let badgesReg = L.layerGroup(), badgesSub = L.layerGroup(), badgesDist = L.layerGroup();
-            let pinsLocais = L.layerGroup(), perimetrosLayer = L.layerGroup(), blocosLayer = L.layerGroup();
+            let pinsLocais = L.layerGroup(), perimetrosLayer = L.layerGroup(), itensLayer = L.layerGroup();
             
             let contagemRegiao = {}, contagemSub = {}, contagemDist = {};
 
@@ -471,7 +531,7 @@
                 atualizarIndicadorCamada(`Locais (${nomeDistrito})`);
 
                 if (distritosLayer) map.removeLayer(distritosLayer); badgesDist.removeFrom(map);
-                distritoSelecionadoLayer.clearLayers(); pinsLocais.clearLayers(); perimetrosLayer.clearLayers(); blocosLayer.clearLayers(); map.closePopup();
+                distritoSelecionadoLayer.clearLayers(); pinsLocais.clearLayers(); perimetrosLayer.clearLayers(); itensLayer.clearLayers(); map.closePopup();
 
                 const featDistrito = distritosGeoJSON.features.find(f => extrairNomeDistrito(f) === nomeDistrito);
                 if (featDistrito) L.geoJSON(featDistrito, { style: { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.1, dashArray: "4, 4" }, interactive: false }).addTo(distritoSelecionadoLayer);
@@ -483,7 +543,7 @@
 
                 geojsonPerimetros.features.filter(f => f.properties.distrito === nomeDistrito).forEach(f => {
                     const centroid = turf.centroid(f).geometry.coordinates;
-                    const nomeLocal = f.properties.Equipamento || f.properties.nm_equipamento || 'Local Mapeado';
+                    const nomeLocal = nomeEquipamento(f) || 'Local Mapeado';
                     const marker = L.marker([centroid[1], centroid[0]], { icon: pinIcon });
                     marker.bindTooltip(nomeLocal, { permanent: false, direction: 'top', className: 'tooltip-hover-local' });
                     marker.on('click', function(e) { L.DomEvent.stopPropagation(e); mostrarPerimetroLocal(nomeLocal, f); });
@@ -496,15 +556,15 @@
                 currentState = 4; 
                 atualizarIndicadorCamada(`Estruturas (${nomeLocal})`);
                 
-                pinsLocais.removeFrom(map); perimetrosLayer.clearLayers(); blocosLayer.clearLayers(); map.closePopup();
+                pinsLocais.removeFrom(map); perimetrosLayer.clearLayers(); itensLayer.clearLayers(); map.closePopup();
 
                 const p = featurePerimetro.properties || {};
-                const tituloObra = p.Equipamento || p.nm_equipamento || nomeLocal || 'Local Mapeado';
+                const tituloObra = escaparHTML(nomeEquipamento(featurePerimetro) || nomeLocal || 'Local Mapeado');
                 
-                let blocosDoLocal = { type: "FeatureCollection", features: geojsonBlocos.features ? geojsonBlocos.features.filter(f => f.properties && (f.properties.Equipamento === nomeLocal || f.properties.nm_equipamento === nomeLocal)) : [] };
-                const temBlocos = blocosDoLocal.features.length > 0;
+                let itensDoLocal = { type: "FeatureCollection", features: geojsonItens.features ? geojsonItens.features.filter(f => pertenceAoEquipamento(f, featurePerimetro)) : [] };
+                const temItens = itensDoLocal.features.length > 0;
 
-                const avisoBlocos = temBlocos ? `<i style="color: #E65100; font-size: 11px;">(Clique nos blocos coloridos)</i>` : `<i style="color: #666; font-size: 11px;">(Sem blocos)</i>`;
+                const avisoItens = temItens ? `<i style="color: #E65100; font-size: 11px;">(Clique nos blocos, conjuntos ou estruturas)</i>` : `<i style="color: #666; font-size: 11px;">(Sem blocos, conjuntos ou estruturas vinculados)</i>`;
 
                 let mod = p['Modalidade da Concessão'] || p.tx_modalidade_concessao;
                 let conc = p['Concessionária'] || p.nm_concessionaria;
@@ -529,10 +589,11 @@
                 const separador = listaDetalhes !== '' ? `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;">` : ``;
 
                 let gruposInfra = {};
-                const chavesIgnoradas = ['Equipamento', 'nm_equipamento', 'distrito', 'regiao', 'subprefeitura', 'Modalidade da Concessão', 'tx_modalidade_concessao', 'Concessionária', 'nm_concessionaria', 'Investimento', 'qt_investimento_real', 'Prazo da Concessão', 'qt_prazo_concessao', 'Poder Concedente', 'Área', 'Bloco', 'bloco', 'Nome', 'nome'];
+                const chavesIgnoradas = ['Equipamento', 'nm_equipamento', 'distrito', 'regiao', 'subprefeitura', 'Modalidade da Concessão', 'tx_modalidade_concessao', 'Concessionária', 'nm_concessionaria', 'Investimento', 'qt_investimento_real', 'Prazo da Concessão', 'qt_prazo_concessao', 'Poder Concedente', 'Área', 'Bloco', 'Conjunto', 'Estrutura', 'nm_bloco', 'nm_conjunto', 'nm_estrutura', 'Nome', 'name', 'Tipo', 'Tipo de item', 'tipo_item', 'tipo_estrutura'];
+                const ignorarChave = chave => chavesIgnoradas.some(k => normalizarTexto(k) === normalizarTexto(chave));
                 
                 for (const [chave, valor] of Object.entries(p)) {
-                    if (!chavesIgnoradas.includes(chave) && valor !== null && valor !== "" && valor > 0) {
+                    if (!ignorarChave(chave) && temValorInformado(valor)) {
                         let cat = "Outras Informações", item = chave;
                         if (chave.includes('-')) { const pt = chave.split('-'); cat = pt[0].trim(); item = pt.slice(1).join('-').trim(); }
                         if (!gruposInfra[cat]) gruposInfra[cat] = [];
@@ -542,35 +603,41 @@
                 
                 let infraPerimetroHTML = '';
                 if (Object.keys(gruposInfra).length > 0) {
-                    infraPerimetroHTML += `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;"><b>Infraestrutura Prevista/Geral:</b>`;
+                    infraPerimetroHTML += `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;"><b>Informações gerais:</b>`;
                     for (const cat in gruposInfra) {
-                        infraPerimetroHTML += `<div style="margin-top:6px; color:#00506E;"><b>${cat}:</b></div><ul>`;
-                        gruposInfra[cat].forEach(i => infraPerimetroHTML += `<li>${i.nome} : ${i.qtd}</li>`);
+                        infraPerimetroHTML += `<div style="margin-top:6px; color:#00506E;"><b>${escaparHTML(cat)}:</b></div><ul>`;
+                        gruposInfra[cat].forEach(i => infraPerimetroHTML += `<li>${escaparHTML(i.nome)} : ${escaparHTML(i.qtd)}</li>`);
                         infraPerimetroHTML += `</ul>`;
                     }
                 }
 
-                const infoGeralHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong></div>${separador}${listaDetalhes}${infraPerimetroHTML}<div style="text-align:center; margin-top: 8px;">${avisoBlocos}</div></div>`;
+                const infoGeralHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong></div>${separador}${listaDetalhes}${infraPerimetroHTML}<div style="text-align:center; margin-top: 8px;">${avisoItens}</div></div>`;
 
                 const camadaPerimetro = L.geoJSON(featurePerimetro, { style: { color: "#E65100", weight: 3, fillColor: "#F57C00", fillOpacity: 0.2, dashArray: "5, 5" } }).addTo(perimetrosLayer);
                 camadaPerimetro.bindTooltip(`<b>${tituloObra}</b>`, { sticky: true });
                 camadaPerimetro.on('click', function(e) { L.DomEvent.stopPropagation(e); L.popup().setLatLng(e.latlng).setContent(infoGeralHTML).openOn(map); });
 
-                if (temBlocos) {
-                    L.geoJSON(blocosDoLocal, {
-                        style: function (f) {
-                            const tipo = f.properties.Bloco || f.properties.bloco || f.properties.Nome || f.properties.nome || 'Bloco Genérico';
-                            const paleta = [{ border: '#1565C0', fill: '#2196F3' }, { border: '#2E7D32', fill: '#4CAF50' }, { border: '#6A1B9A', fill: '#9C27B0' }, { border: '#C62828', fill: '#F44336' }];
-                            let hash = 0; for (let i = 0; i < tipo.length; i++) hash = tipo.charCodeAt(i) + ((hash << 5) - hash);
-                            return { color: paleta[Math.abs(hash) % paleta.length].border, weight: 1.5, fillColor: paleta[Math.abs(hash) % paleta.length].fill, fillOpacity: 0.65 };
-                        },
+                function estiloItem(f) {
+                    const nome = tipoItem(f) + ':' + nomeItem(f);
+                    const paleta = [{ border: '#1565C0', fill: '#2196F3' }, { border: '#2E7D32', fill: '#4CAF50' }, { border: '#6A1B9A', fill: '#9C27B0' }, { border: '#C62828', fill: '#F44336' }];
+                    let hash = 0;
+                    for (let i = 0; i < nome.length; i++) hash = (nome.charCodeAt(i) + ((hash << 5) - hash)) | 0;
+                    const cor = paleta[Math.abs(hash) % paleta.length];
+                    return { color: cor.border, weight: 2, fillColor: cor.fill, fillOpacity: 0.65 };
+                }
+
+                if (temItens) {
+                    L.geoJSON(itensDoLocal, {
+                        style: estiloItem,
+                        pointToLayer: (f, latlng) => L.circleMarker(latlng, { ...estiloItem(f), radius: 7 }),
                         onEachFeature: (f, l) => {
-                            const tituloBloco = f.properties.Bloco || f.properties.bloco || f.properties.Nome || f.properties.nome || 'Bloco Genérico';
-                            l.bindTooltip(`<b>${tituloObra}</b><br>${tituloBloco}`, { sticky: true });
+                            const tituloBloco = escaparHTML(nomeItem(f));
+                            const rotuloTipo = tipoItem(f);
+                            l.bindTooltip(`<b>${tituloObra}</b><br>${rotuloTipo}: ${tituloBloco}`, { sticky: true });
                             
                             let gruposInfraBloco = {};
                             for (const [chave, valor] of Object.entries(f.properties || {})) {
-                                if (!chavesIgnoradas.includes(chave) && valor !== null && valor !== "" && valor > 0) {
+                                if (!ignorarChave(chave) && temValorInformado(valor)) {
                                     let cat = "Infraestrutura", item = chave;
                                     if (chave.includes('-')) { const pt = chave.split('-'); cat = pt[0].trim(); item = pt.slice(1).join('-').trim(); }
                                     if (!gruposInfraBloco[cat]) gruposInfraBloco[cat] = [];
@@ -581,27 +648,30 @@
                             let listaInfraBlocoHTML = '';
                             if (Object.keys(gruposInfraBloco).length > 0) {
                                 for (const cat in gruposInfraBloco) {
-                                    if (cat !== "Infraestrutura") listaInfraBlocoHTML += `<div style="margin-top:6px; color:#00506E;"><b>${cat}:</b></div>`;
+                                    if (cat !== "Infraestrutura") listaInfraBlocoHTML += `<div style="margin-top:6px; color:#00506E;"><b>${escaparHTML(cat)}:</b></div>`;
                                     listaInfraBlocoHTML += `<ul>`;
-                                    gruposInfraBloco[cat].forEach(i => listaInfraBlocoHTML += `<li>${i.nome} : ${i.qtd}</li>`);
+                                    gruposInfraBloco[cat].forEach(i => listaInfraBlocoHTML += `<li>${escaparHTML(i.nome)} : ${escaparHTML(i.qtd)}</li>`);
                                     listaInfraBlocoHTML += `</ul>`;
                                 }
                             } else listaInfraBlocoHTML = '<ul><li>Sem detalhamento.</li></ul>';
 
-                            const infoBlocoHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br><span style="display:inline-block; margin-top:2px; background:#ddd; padding:2px 5px; border-radius:4px; font-size:10px;">BLOCO: ${tituloBloco}</span></div><hr style="margin: 6px 0;"><b>Itens Disponíveis:</b>${listaInfraBlocoHTML}</div>`;
+                            const infoBlocoHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br><span style="display:inline-block; margin-top:2px; background:#ddd; padding:2px 5px; border-radius:4px; font-size:10px;">${rotuloTipo.toUpperCase()}: ${tituloBloco}</span></div><hr style="margin: 6px 0;"><b>Detalhes:</b>${listaInfraBlocoHTML}</div>`;
                             l.bindPopup(infoBlocoHTML); l.on('click', function(e) { L.DomEvent.stopPropagation(e); });
                         }
-                    }).addTo(blocosLayer);
+                    }).addTo(itensLayer);
                 }
 
-                perimetrosLayer.addTo(map); blocosLayer.addTo(map);
+                perimetrosLayer.addTo(map); itensLayer.addTo(map);
                 boundsLocalAtual = camadaPerimetro.getBounds();
+                itensLayer.eachLayer(camada => {
+                    if (camada.getBounds && camada.getBounds().isValid()) boundsLocalAtual.extend(camada.getBounds());
+                });
                 map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 16 });
             }
 
             map.on('click', function () {
                 if (currentState === 4) { 
-                    map.closePopup(); perimetrosLayer.clearLayers(); blocosLayer.clearLayers(); 
+                    map.closePopup(); perimetrosLayer.clearLayers(); itensLayer.clearLayers(); 
                     if (distritoAtual && boundsDistritoAtual) mostrarPinsDistrito(distritoAtual, boundsDistritoAtual);
                     else renderizarSubprefeituras(regiaoAtual);
                 }
@@ -636,7 +706,7 @@
 
             if (numLocais === 1) {
                 const featureUnica = geojsonPerimetros.features[0];
-                const nomeLocalUnico = featureUnica.properties.Equipamento || featureUnica.properties.nm_equipamento || 'Local Mapeado';
+                const nomeLocalUnico = nomeEquipamento(featureUnica) || 'Local Mapeado';
                 const distUnico = featureUnica.properties.distrito;
                 const subUnica = buscarSubprefeitura(distUnico);
                 const regUnica = buscarRegiao(subUnica);
