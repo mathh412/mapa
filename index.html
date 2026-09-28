@@ -150,6 +150,41 @@
             return String(valor ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         }
 
+        // Coloração por saturação: tenta as quatro cores e revisa escolhas quando necessário.
+        function colorirVizinhos(vizinhos, quantidadeCores = 4) {
+            const cores = Array(vizinhos.length).fill(-1);
+            function resolver(restantes) {
+                if (!restantes) return true;
+                let escolhido = -1;
+                let maiorSaturacao = -1;
+                for (let i = 0; i < cores.length; i++) {
+                    if (cores[i] !== -1) continue;
+                    const saturacao = new Set([...vizinhos[i]].map(j => cores[j]).filter(c => c >= 0)).size;
+                    if (escolhido === -1 || saturacao > maiorSaturacao ||
+                        (saturacao === maiorSaturacao && vizinhos[i].size > vizinhos[escolhido].size)) {
+                        escolhido = i;
+                        maiorSaturacao = saturacao;
+                    }
+                }
+                const proibidas = new Set([...vizinhos[escolhido]].map(j => cores[j]));
+                const uso = Array(quantidadeCores).fill(0);
+                cores.forEach(c => { if (c >= 0) uso[c]++; });
+                const candidatas = Array.from({ length: quantidadeCores }, (_, i) => i)
+                    .filter(c => !proibidas.has(c)).sort((a, b) => uso[a] - uso[b] || a - b);
+                let tentouCorNova = false;
+                for (const cor of candidatas) {
+                    // Cores ainda não usadas são equivalentes para a busca.
+                    if (!uso[cor] && tentouCorNova) continue;
+                    if (!uso[cor]) tentouCorNova = true;
+                    cores[escolhido] = cor;
+                    if (resolver(restantes - 1)) return true;
+                    cores[escolhido] = -1;
+                }
+                return false;
+            }
+            return resolver(cores.length) ? cores : null;
+        }
+
         try {
             const urlParams = new URLSearchParams(window.location.search);
             const grupoParam = urlParams.get('grupo'); 
@@ -717,19 +752,43 @@
                     }
                 });
 
+                const paletaSPP = ['#F08200', '#00506E', '#3B7D95', '#F2F2F2'];
+                let coresItens = null;
+
+                function calcularCoresItens() {
+                    const features = itensDoLocal.features;
+                    const vizinhos = features.map(() => new Set());
+                    const caixas = features.map(f => turf.bbox(f));
+                    for (let i = 0; i < features.length; i++) {
+                        for (let j = i + 1; j < features.length; j++) {
+                            const a = caixas[i], b = caixas[j];
+                            if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue;
+                            // Considera contato por borda, vértice e também sobreposição.
+                            if (!turf.booleanDisjoint(features[i], features[j])) {
+                                vizinhos[i].add(j);
+                                vizinhos[j].add(i);
+                            }
+                        }
+                    }
+                    const indices = colorirVizinhos(vizinhos);
+                    return indices && new Map(features.map((f, i) => [f, paletaSPP[indices[i]]]));
+                }
+
                 function estiloItem(f) {
-                    const nome = tipoItem(f) + ':' + nomeItem(f);
-                    const paleta = [{ border: '#1565C0', fill: '#2196F3' }, { border: '#2E7D32', fill: '#4CAF50' }, { border: '#6A1B9A', fill: '#9C27B0' }, { border: '#C62828', fill: '#F44336' }];
-                    let hash = 0;
-                    for (let i = 0; i < nome.length; i++) hash = (nome.charCodeAt(i) + ((hash << 5) - hash)) | 0;
-                    const cor = paleta[Math.abs(hash) % paleta.length];
-                    return { color: cor.border, weight: 2, fillColor: cor.fill, fillOpacity: 0.65 };
+                    const cor = coresItens.get(f);
+                    return { color: '#00506E', weight: 2, fillColor: cor, fillOpacity: 1 };
                 }
 
                 // Os itens são desenhados somente após um clique no perímetro.
                 let itensExibidos = false;
                 function mostrarItensLocal() {
                     if (itensExibidos || !temItens) return;
+                    if (!coresItens) coresItens = calcularCoresItens();
+                    if (!coresItens) {
+                        cardPerimetro.setContent('<div class="popup-blocos">Não foi possível separar todos os polígonos vizinhos usando apenas quatro cores. Revise os contatos e as sobreposições das geometrias.</div>')
+                            .setLatLng(camadaPerimetro.getBounds().getCenter()).openOn(map);
+                        return;
+                    }
                     itensExibidos = true;
                     currentState = 5;
                     map.closePopup();
