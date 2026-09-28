@@ -28,6 +28,10 @@
         .popup-blocos::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
         .popup-blocos::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
         .popup-blocos::-webkit-scrollbar-thumb:hover { background: #555; }
+        .popup-blocos .arvore-detalhes { padding-left: 16px; margin: 5px 0; }
+        .popup-blocos .arvore-detalhes .arvore-detalhes { border-left: 1px solid #ddd; margin-left: 3px; }
+        .grupo-detalhes { color: #00506E; font-weight: bold; }
+        .campo-detalhes { font-weight: 600; }
         #loading { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(237, 237, 237, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 16px; color: #00506E; font-weight: bold; text-align: center; padding: 20px;}
         
         #indicador-camada {
@@ -104,6 +108,34 @@
         // Mantém valores numéricos e textos formatados, ocultando apenas campos vazios.
         function temValorInformado(valor) {
             return valor !== null && valor !== undefined && String(valor).trim() !== '';
+        }
+
+        // Cada hífen separa um nível. Caminhos iguais compartilham o mesmo grupo.
+        function agruparPropriedades(propriedades, ignorarChave = () => false) {
+            const raiz = new Map();
+            for (const [chave, valor] of Object.entries(propriedades || {})) {
+                if (ignorarChave(chave) || !temValorInformado(valor)) continue;
+                const caminho = chave.split('-').map(parte => parte.trim()).filter(Boolean);
+                let filhos = raiz;
+                caminho.forEach((nome, indice) => {
+                    if (!filhos.has(nome)) filhos.set(nome, { nome, valores: [], filhos: new Map() });
+                    const no = filhos.get(nome);
+                    if (indice === caminho.length - 1) no.valores.push(valor);
+                    filhos = no.filhos;
+                });
+            }
+            return raiz;
+        }
+
+        function renderizarGrupos(grupos) {
+            if (!grupos.size) return '';
+            let html = '<ul class="arvore-detalhes">';
+            for (const no of grupos.values()) {
+                html += `<li><span class="${no.filhos.size ? 'grupo-detalhes' : 'campo-detalhes'}">${escaparHTML(no.nome)}</span>`;
+                if (no.valores.length) html += ': ' + no.valores.map(escaparHTML).join('; ');
+                html += renderizarGrupos(no.filhos) + '</li>';
+            }
+            return html + '</ul>';
         }
 
         function escaparHTML(valor) {
@@ -588,28 +620,13 @@
                 
                 const separador = listaDetalhes !== '' ? `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;">` : ``;
 
-                let gruposInfra = {};
                 const chavesIgnoradas = ['Equipamento', 'nm_equipamento', 'distrito', 'regiao', 'subprefeitura', 'Modalidade da Concessão', 'tx_modalidade_concessao', 'Concessionária', 'nm_concessionaria', 'Investimento', 'qt_investimento_real', 'Prazo da Concessão', 'qt_prazo_concessao', 'Poder Concedente', 'Área', 'Bloco', 'Conjunto', 'Estrutura', 'nm_bloco', 'nm_conjunto', 'nm_estrutura', 'Nome', 'name', 'Tipo', 'Tipo de item', 'tipo_item', 'tipo_estrutura'];
                 const ignorarChave = chave => chavesIgnoradas.some(k => normalizarTexto(k) === normalizarTexto(chave));
                 
-                for (const [chave, valor] of Object.entries(p)) {
-                    if (!ignorarChave(chave) && temValorInformado(valor)) {
-                        let cat = "Outras Informações", item = chave;
-                        if (chave.includes('-')) { const pt = chave.split('-'); cat = pt[0].trim(); item = pt.slice(1).join('-').trim(); }
-                        if (!gruposInfra[cat]) gruposInfra[cat] = [];
-                        gruposInfra[cat].push({ nome: item, qtd: valor });
-                    }
-                }
-                
-                let infraPerimetroHTML = '';
-                if (Object.keys(gruposInfra).length > 0) {
-                    infraPerimetroHTML += `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;"><b>Informações gerais:</b>`;
-                    for (const cat in gruposInfra) {
-                        infraPerimetroHTML += `<div style="margin-top:6px; color:#00506E;"><b>${escaparHTML(cat)}:</b></div><ul>`;
-                        gruposInfra[cat].forEach(i => infraPerimetroHTML += `<li>${escaparHTML(i.nome)} : ${escaparHTML(i.qtd)}</li>`);
-                        infraPerimetroHTML += `</ul>`;
-                    }
-                }
+                const gruposInfra = agruparPropriedades(p, ignorarChave);
+                const infraPerimetroHTML = gruposInfra.size
+                    ? `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;"><b>Informações gerais:</b>${renderizarGrupos(gruposInfra)}`
+                    : '';
 
                 const infoGeralHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong></div>${separador}${listaDetalhes}${infraPerimetroHTML}<div style="text-align:center; margin-top: 8px;">${avisoItens}</div></div>`;
 
@@ -635,25 +652,9 @@
                             const rotuloTipo = tipoItem(f);
                             l.bindTooltip(`<b>${tituloObra}</b><br>${rotuloTipo}: ${tituloBloco}`, { sticky: true });
                             
-                            let gruposInfraBloco = {};
-                            for (const [chave, valor] of Object.entries(f.properties || {})) {
-                                if (!ignorarChave(chave) && temValorInformado(valor)) {
-                                    let cat = "Infraestrutura", item = chave;
-                                    if (chave.includes('-')) { const pt = chave.split('-'); cat = pt[0].trim(); item = pt.slice(1).join('-').trim(); }
-                                    if (!gruposInfraBloco[cat]) gruposInfraBloco[cat] = [];
-                                    gruposInfraBloco[cat].push({ nome: item, qtd: valor });
-                                }
-                            }
-
-                            let listaInfraBlocoHTML = '';
-                            if (Object.keys(gruposInfraBloco).length > 0) {
-                                for (const cat in gruposInfraBloco) {
-                                    if (cat !== "Infraestrutura") listaInfraBlocoHTML += `<div style="margin-top:6px; color:#00506E;"><b>${escaparHTML(cat)}:</b></div>`;
-                                    listaInfraBlocoHTML += `<ul>`;
-                                    gruposInfraBloco[cat].forEach(i => listaInfraBlocoHTML += `<li>${escaparHTML(i.nome)} : ${escaparHTML(i.qtd)}</li>`);
-                                    listaInfraBlocoHTML += `</ul>`;
-                                }
-                            } else listaInfraBlocoHTML = '<ul><li>Sem detalhamento.</li></ul>';
+                            const gruposInfraBloco = agruparPropriedades(f.properties, ignorarChave);
+                            const listaInfraBlocoHTML = renderizarGrupos(gruposInfraBloco)
+                                || '<ul><li>Sem detalhamento.</li></ul>';
 
                             const infoBlocoHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br><span style="display:inline-block; margin-top:2px; background:#ddd; padding:2px 5px; border-radius:4px; font-size:10px;">${rotuloTipo.toUpperCase()}: ${tituloBloco}</span></div><hr style="margin: 6px 0;"><b>Detalhes:</b>${listaInfraBlocoHTML}</div>`;
                             l.bindPopup(infoBlocoHTML); l.on('click', function(e) { L.DomEvent.stopPropagation(e); });
