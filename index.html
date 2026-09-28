@@ -119,13 +119,16 @@
         function agruparPropriedades(propriedades, ignorarChave = () => false) {
             const raiz = new Map();
             for (const [chave, valor] of Object.entries(propriedades || {})) {
-                if (ignorarChave(chave) || !temValorInformado(valor)) continue;
+                if (ignorarChave(chave) || valor === null || valor === undefined) continue;
+                // Texto vazio ou "vazio" cria o nome do campo sem exibir um valor.
+                const somenteNome = typeof valor === 'string'
+                    && (valor.trim() === '' || normalizarTexto(valor) === 'vazio');
                 const caminho = chave.split('-').map(parte => parte.trim()).filter(Boolean);
                 let filhos = raiz;
                 caminho.forEach((nome, indice) => {
                     if (!filhos.has(nome)) filhos.set(nome, { nome, valores: [], filhos: new Map() });
                     const no = filhos.get(nome);
-                    if (indice === caminho.length - 1) no.valores.push(valor);
+                    if (indice === caminho.length - 1 && !somenteNome) no.valores.push(valor);
                     filhos = no.filhos;
                 });
             }
