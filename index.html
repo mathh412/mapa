@@ -641,13 +641,26 @@
                 const infoGeralHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong></div>${separador}${listaDetalhes}${infraPerimetroHTML}<div style="text-align:center; margin-top: 8px;">${avisoItens}</div></div>`;
 
                 const camadaPerimetro = L.geoJSON(featurePerimetro, { style: { color: "#E65100", weight: 3, fillColor: "#F57C00", fillOpacity: 0.2, dashArray: "5, 5" } }).addTo(perimetrosLayer);
-                camadaPerimetro.bindTooltip(infoGeralHTML, {
-                    sticky: true,
-                    direction: 'auto',
-                    className: 'tooltip-propriedades-perimetro'
+                // Card fixo e interativo: permanece aberto ao mover o mouse até ele.
+                const cardPerimetro = L.popup({
+                    maxWidth: 360,
+                    maxHeight: 280,
+                    autoPan: true,
+                    closeButton: true,
+                    closeOnClick: false
+                }).setContent(infoGeralHTML);
+                cardPerimetro.on('add', () => {
+                    const elemento = cardPerimetro.getElement();
+                    L.DomEvent.disableScrollPropagation(elemento);
+                    L.DomEvent.disableClickPropagation(elemento);
                 });
                 camadaPerimetro.eachLayer(layer => {
                     layer.options.bubblingMouseEvents = false;
+                    layer.on('mouseover', function(e) {
+                        if (currentState === 4 && !map.hasLayer(cardPerimetro)) {
+                            cardPerimetro.setLatLng(e.latlng).openOn(map);
+                        }
+                    });
                 });
                 camadaPerimetro.on('click', function(e) {
                     L.DomEvent.stopPropagation(e);
@@ -674,8 +687,6 @@
                     if (itensExibidos || !temItens) return;
                     itensExibidos = true;
                     currentState = 5;
-                    camadaPerimetro.closeTooltip();
-                    camadaPerimetro.unbindTooltip();
                     map.closePopup();
                     atualizarIndicadorCamada(`Blocos / Conjuntos / Estruturas (${tituloObra})`);
                     if (temItens) {
