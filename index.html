@@ -649,17 +649,62 @@
                     closeButton: true,
                     closeOnClick: false
                 }).setContent(infoGeralHTML);
+                let mouseNoPerimetro = false;
+                let mouseNoCard = false;
+                let timerFecharCard = null;
+
+                function cancelarFechamentoCard() {
+                    clearTimeout(timerFecharCard);
+                    timerFecharCard = null;
+                }
+
+                function agendarFechamentoCard() {
+                    cancelarFechamentoCard();
+                    timerFecharCard = setTimeout(() => {
+                        timerFecharCard = null;
+                        if (!mouseNoPerimetro && !mouseNoCard) {
+                            cardPerimetro.remove();
+                        }
+                    }, 250);
+                }
+
+                function entrarNoCard() {
+                    mouseNoCard = true;
+                    cancelarFechamentoCard();
+                }
+
+                function sairDoCard() {
+                    mouseNoCard = false;
+                    agendarFechamentoCard();
+                }
+
                 cardPerimetro.on('add', () => {
                     const elemento = cardPerimetro.getElement();
                     L.DomEvent.disableScrollPropagation(elemento);
                     L.DomEvent.disableClickPropagation(elemento);
+                    // Remove antes de registrar para evitar duplicar eventos ao reabrir.
+                    L.DomEvent.off(elemento, 'mouseenter', entrarNoCard);
+                    L.DomEvent.off(elemento, 'mouseleave', sairDoCard);
+                    L.DomEvent.on(elemento, 'mouseenter', entrarNoCard);
+                    L.DomEvent.on(elemento, 'mouseleave', sairDoCard);
                 });
+                cardPerimetro.on('remove', () => {
+                    cancelarFechamentoCard();
+                    mouseNoCard = false;
+                });
+                camadaPerimetro.on('remove', cancelarFechamentoCard);
                 camadaPerimetro.eachLayer(layer => {
                     layer.options.bubblingMouseEvents = false;
                     layer.on('mouseover', function(e) {
+                        mouseNoPerimetro = true;
+                        cancelarFechamentoCard();
                         if (currentState === 4 && !map.hasLayer(cardPerimetro)) {
                             cardPerimetro.setLatLng(e.latlng).openOn(map);
                         }
+                    });
+                    layer.on('mouseout', function() {
+                        mouseNoPerimetro = false;
+                        agendarFechamentoCard();
                     });
                 });
                 camadaPerimetro.on('click', function(e) {
