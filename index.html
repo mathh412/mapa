@@ -150,6 +150,30 @@
             return String(valor ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         }
 
+        // Areas[i] descreve exclusivamente coordinates[i] do MultiPolygon.
+        // A separação ocorre só na renderização; o GeoJSON mantém o MultiPolygon.
+        function separarAreasParaExibicao(feature) {
+            const areas = feature.properties?.Areas;
+            if (feature.geometry?.type !== 'MultiPolygon' || !Array.isArray(areas)) return [feature];
+            return feature.geometry.coordinates.map((coordinates, indice) => {
+                const area = areas[indice];
+                const properties = { ...feature.properties };
+                delete properties.Areas;
+                if (area) {
+                    for (const chave of Object.keys(properties)) {
+                        if (normalizarTexto(chave).startsWith('etapas -') ||
+                            normalizarTexto(chave).startsWith('geometria - areas -')) delete properties[chave];
+                    }
+                    for (const etapa of area.etapas || []) properties['Etapas - ' + etapa] = '';
+                }
+                return { ...feature, properties,
+                    geometry: { type: 'Polygon', coordinates },
+                    __featureOrigem: feature,
+                    __nomeArea: area?.nome || 'Área ' + (indice + 1)
+                };
+            });
+        }
+
         function lerFiltroURL(params, ...chaves) {
             return [...new Set(chaves.flatMap(chave => params.getAll(chave))
                 .flatMap(valor => valor.split(','))
@@ -436,10 +460,12 @@
                 });
             }
             
-            const map = L.map('map').setView([-23.5505, -46.6333], 11);
+            const map = L.map('map', { maxZoom: 20 }).setView([-23.5505, -46.6333], 11);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri', 
-                maxZoom: 16 
+                // O fundo usa imagens até 16; os polígonos podem aproximar até 20.
+                maxNativeZoom: 16,
+                maxZoom: 20
             }).addTo(map);
 
             const corAzul = "#00506E";
@@ -805,7 +831,7 @@
                 }
 
                 function estiloItem(f) {
-                    const cor = coresItens.get(f);
+                    const cor = coresItens.get(f.__featureOrigem || f);
                     return { color: '#00506E', weight: 2, fillColor: cor, fillOpacity: 1 };
                 }
 
@@ -824,20 +850,21 @@
                     map.closePopup();
                     atualizarIndicadorCamada(`Blocos / Conjuntos / Estruturas (${tituloObra})`);
                     if (temItens) {
-                        L.geoJSON(itensDoLocal, {
+                        L.geoJSON({ type: 'FeatureCollection', features: itensDoLocal.features.flatMap(separarAreasParaExibicao) }, {
                             style: estiloItem,
                             pointToLayer: (f, latlng) => L.circleMarker(latlng, { ...estiloItem(f), radius: 7 }),
                             onEachFeature: (f, l) => {
                                 const tituloObra = escaparHTML(nomeEquipamento(f) || nomeLocal);
                                 const tituloBloco = escaparHTML(nomeItem(f));
                                 const rotuloTipo = tipoItem(f);
-                                l.bindTooltip(`<b>${tituloObra}</b><br>${rotuloTipo}: ${tituloBloco}`, { sticky: true });
+                                const nomeAreaHTML = f.__nomeArea ? '<br><b>' + escaparHTML(f.__nomeArea) + '</b>' : '';
+                                l.bindTooltip(`<b>${tituloObra}</b><br>${rotuloTipo}: ${tituloBloco}${nomeAreaHTML}`, { sticky: true });
                                 
                                 const gruposInfraBloco = agruparPropriedades(f.properties, ignorarChave);
                                 const listaInfraBlocoHTML = renderizarGrupos(gruposInfraBloco)
                                     || '<ul><li>Sem detalhamento.</li></ul>';
     
-                                const infoBlocoHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br><span style="display:inline-block; margin-top:2px; background:#ddd; padding:2px 5px; border-radius:4px; font-size:10px;">${rotuloTipo.toUpperCase()}: ${tituloBloco}</span></div><hr style="margin: 6px 0;"><b>Detalhes:</b>${listaInfraBlocoHTML}</div>`;
+                                const infoBlocoHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br><span style="display:inline-block; margin-top:2px; background:#ddd; padding:2px 5px; border-radius:4px; font-size:10px;">${rotuloTipo.toUpperCase()}: ${tituloBloco}</span>${nomeAreaHTML}</div><hr style="margin: 6px 0;"><b>Detalhes:</b>${listaInfraBlocoHTML}</div>`;
                                 l.options.bubblingMouseEvents = false;
                                 l.bindPopup(infoBlocoHTML); l.on('click', function(e) { L.DomEvent.stopPropagation(e); });
                             }
