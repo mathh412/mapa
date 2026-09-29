@@ -21,6 +21,25 @@
         .custom-svg-pin { background: transparent; border: none; }
         .tooltip-hover-local { background-color: #00506E; color: #ffffff; border: 1px solid #fff; font-weight: bold; font-size: 12px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.4); }
         .tooltip-hover-local:before { border-top-color: #00506E !important; }
+
+        /* Tooltip mais limpo para Blocos / Conjuntos / Estruturas */
+        .tooltip-area-interna {
+            background: rgba(255,255,255,0.96);
+            color: #263238;
+            border: 1px solid rgba(0,80,110,0.22);
+            border-radius: 7px;
+            padding: 5px 9px;
+            font-weight: 500;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.18);
+        }
+        .tooltip-area-interna:before {
+            border-top-color: rgba(255,255,255,0.96) !important;
+        }
+
+        /* Suaviza as mudanças no hover sem alterar a paleta */
+        .area-interna {
+            transition: fill-opacity 0.15s ease, stroke-width 0.15s ease, stroke 0.15s ease;
+        }
         .tooltip-propriedades-perimetro {
             background: #fff; color: #333; border: 1px solid #ccc;
             padding: 10px; white-space: normal; font-weight: normal;
@@ -841,7 +860,30 @@
 
                 function estiloItem(f) {
                     const cor = coresItens.get(f.__featureOrigem || f);
-                    return { color: '#00506E', weight: 2, fillColor: cor, fillOpacity: 1 };
+
+                    // Mantém as cores originais, mas usa o preenchimento mais leve
+                    // e borda branca para separar visualmente áreas vizinhas.
+                    return {
+                        color: '#FFFFFF',
+                        weight: 2.5,
+                        opacity: 1,
+                        fillColor: cor,
+                        fillOpacity: 0.38,
+                        lineJoin: 'round',
+                        lineCap: 'round',
+                        className: 'area-interna'
+                    };
+                }
+
+                function estiloItemHover(f) {
+                    const cor = coresItens.get(f.__featureOrigem || f);
+                    return {
+                        color: '#FFFFFF',
+                        weight: 4,
+                        opacity: 1,
+                        fillColor: cor,
+                        fillOpacity: 0.68
+                    };
                 }
 
                 // Os itens são desenhados somente após um clique no perímetro.
@@ -858,6 +900,17 @@
                     currentState = 5;
                     map.closePopup();
                     atualizarIndicadorCamada("Áreas Internas");
+
+                    // No nível interno, o perímetro vira apenas uma moldura azul.
+                    // Assim ele não compete visualmente com Blocos / Conjuntos / Estruturas.
+                    camadaPerimetro.setStyle({
+                        color: corAzul,
+                        weight: 4,
+                        opacity: 0.95,
+                        fillOpacity: 0,
+                        dashArray: null
+                    });
+
                     if (temItens) {
                         L.geoJSON({ type: 'FeatureCollection', features: itensDoLocal.features.flatMap(separarAreasParaExibicao) }, {
                             style: estiloItem,
@@ -867,7 +920,24 @@
                                 const tituloBloco = escaparHTML(nomeItem(f));
                                 const rotuloTipo = tipoItem(f);
                                 const nomeAreaHTML = f.__nomeArea ? '<br><b>' + escaparHTML(f.__nomeArea) + '</b>' : '';
-                                l.bindTooltip(`<b>${tituloObra}</b><br>${rotuloTipo}: ${tituloBloco}${nomeAreaHTML}`, { sticky: true });
+                                l.bindTooltip(
+                                    `<b>${tituloObra}</b><br>${rotuloTipo}: ${tituloBloco}${nomeAreaHTML}`,
+                                    {
+                                        sticky: true,
+                                        className: 'tooltip-area-interna',
+                                        opacity: 1
+                                    }
+                                );
+
+                                // Destaca somente a área apontada, sem trocar sua cor.
+                                l.on('mouseover', function() {
+                                    if (l.setStyle) l.setStyle(estiloItemHover(f));
+                                    if (l.bringToFront) l.bringToFront();
+                                });
+
+                                l.on('mouseout', function() {
+                                    if (l.setStyle) l.setStyle(estiloItem(f));
+                                });
                                 
                                 const gruposInfraBloco = agruparPropriedades(f.properties, ignorarChave);
                                 const listaInfraBlocoHTML = renderizarGrupos(gruposInfraBloco)
