@@ -38,7 +38,7 @@
 
         /* Suaviza as mudanças no hover sem alterar a paleta */
         .area-interna {
-            transition: fill-opacity 0.15s ease, stroke-width 0.15s ease, stroke 0.15s ease;
+            transition: fill 0.16s ease, fill-opacity 0.16s ease, stroke-width 0.16s ease, stroke 0.16s ease;
         }
         .tooltip-propriedades-perimetro {
             background: #fff; color: #333; border: 1px solid #ccc;
@@ -896,39 +896,15 @@
                     }
                 });
 
-                const paletaSPP = ['#F08200', '#00506E', '#3B7D95', '#F2F2F2'];
-                let coresItens = null;
-
-                function calcularCoresItens() {
-                    const features = itensDoLocal.features;
-                    const vizinhos = features.map(() => new Set());
-                    const caixas = features.map(f => turf.bbox(f));
-                    for (let i = 0; i < features.length; i++) {
-                        for (let j = i + 1; j < features.length; j++) {
-                            const a = caixas[i], b = caixas[j];
-                            if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue;
-                            // Considera contato por borda, vértice e também sobreposição.
-                            if (!turf.booleanDisjoint(features[i], features[j])) {
-                                vizinhos[i].add(j);
-                                vizinhos[j].add(i);
-                            }
-                        }
-                    }
-                    const indices = colorirVizinhos(vizinhos);
-                    return indices && new Map(features.map((f, i) => [f, paletaSPP[indices[i]]]));
-                }
-
+                // Todas as divisões internas usam a mesma identidade visual:
+                // azul normalmente e laranja quando o mouse estiver sobre a área.
                 function estiloItem(f) {
-                    const cor = coresItens.get(f.__featureOrigem || f);
-
-                    // Mantém as cores originais, mas usa o preenchimento mais leve
-                    // e borda branca para separar visualmente áreas vizinhas.
                     return {
                         color: '#FFFFFF',
-                        weight: 2.5,
-                        opacity: 1,
-                        fillColor: cor,
-                        fillOpacity: 0.38,
+                        weight: 1,
+                        opacity: 0.95,
+                        fillColor: '#00506E',
+                        fillOpacity: 0.48,
                         lineJoin: 'round',
                         lineCap: 'round',
                         className: 'area-interna'
@@ -936,13 +912,14 @@
                 }
 
                 function estiloItemHover(f) {
-                    const cor = coresItens.get(f.__featureOrigem || f);
                     return {
                         color: '#FFFFFF',
-                        weight: 4,
+                        weight: 1.5,
                         opacity: 1,
-                        fillColor: cor,
-                        fillOpacity: 0.68
+                        fillColor: '#F08200',
+                        fillOpacity: 0.78,
+                        lineJoin: 'round',
+                        lineCap: 'round'
                     };
                 }
 
@@ -950,18 +927,12 @@
                 let itensExibidos = false;
                 function mostrarItensLocal() {
                     if (itensExibidos || !temItens) return;
-                    if (!coresItens) coresItens = calcularCoresItens();
-                    if (!coresItens) {
-                        cardPerimetro.setContent('<div class="popup-blocos">Não foi possível separar todos os polígonos vizinhos usando apenas quatro cores. Revise os contatos e as sobreposições das geometrias.</div>')
-                            .setLatLng(camadaPerimetro.getBounds().getCenter()).openOn(map);
-                        return;
-                    }
                     itensExibidos = true;
                     currentState = 5;
                     map.closePopup();
-                    atualizarIndicadorCamada("Áreas Internas");
+                    atualizarIndicadorCamada("Divisões Internas");
 
-                    // No nível interno, o perímetro vira apenas uma moldura azul.
+                    // Em Divisões Internas, o perímetro vira apenas uma moldura azul.
                     // Assim ele não compete visualmente com Blocos / Conjuntos / Estruturas.
                     camadaPerimetro.setStyle({
                         color: corAzul,
@@ -989,7 +960,7 @@
                                     }
                                 );
 
-                                // Destaca somente a área apontada, sem trocar sua cor.
+                                // Destaca a divisão apontada em laranja.
                                 l.on('mouseover', function() {
                                     if (l.setStyle) l.setStyle(estiloItemHover(f));
                                     if (l.bringToFront) l.bringToFront();
