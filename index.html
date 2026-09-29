@@ -89,7 +89,63 @@
 
         // Os três tipos usam o mesmo vínculo direto com um equipamento.
         function normalizarTexto(texto) {
-            return String(texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+            return String(texto ?? '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/\u00A0/g, ' ')
+                .replace(/\s+/g, ' ')
+                .replace(/\(\s+/g, '(')
+                .replace(/\s+\)/g, ')')
+                .toLowerCase()
+                .trim();
+        }
+
+        // Normalização específica para valores usados nos filtros da URL.
+        // Faz, por exemplo:
+        // "Conjunto 4", "4", "4 (Galerias de Águas Pluviais)"
+        // e "Galerias de Águas Pluviais" encontrarem o mesmo item.
+        function normalizarFiltroItem(texto) {
+            return normalizarTexto(texto)
+                .replace(/^(bloco|blocos|conjunto|conjuntos|estrutura|estruturas)\s*[:#\-]?\s*/, '')
+                .replace(/[()\[\]{}]/g, ' ')
+                .replace(/[–—]/g, '-')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function itemCorrespondeFiltro(feature, filtro) {
+            const nomeCompleto = normalizarFiltroItem(nomeItem(feature));
+            const alvo = normalizarFiltroItem(filtro);
+
+            if (!alvo) return false;
+
+            // 1. Nome completo.
+            if (nomeCompleto === alvo) return true;
+
+            // 2. Permite filtrar apenas pelo número:
+            // ?conjunto=4
+            // ?conjunto=8
+            const numeroNome = nomeCompleto.match(/^(\d+)(?=\s|$|-)/)?.[1];
+            const numeroFiltro = alvo.match(/^\d+$/)?.[0];
+
+            if (numeroFiltro && numeroNome === numeroFiltro) return true;
+
+            // 3. Permite "Conjunto 4" ou "4 - Nome".
+            const alvoSemSeparador = alvo.replace(/^(\d+)\s*-\s*/, '$1 ');
+            const nomeSemSeparador = nomeCompleto.replace(/^(\d+)\s*-\s*/, '$1 ');
+
+            if (nomeSemSeparador === alvoSemSeparador) return true;
+
+            // 4. Permite usar somente o texto que vem depois do número:
+            // ?conjunto=Galerias de Águas Pluviais
+            const nomeSemNumero = nomeCompleto
+                .replace(/^\d+\s*/, '')
+                .replace(/^[-:]\s*/, '')
+                .trim();
+
+            if (nomeSemNumero && nomeSemNumero === alvo) return true;
+
+            return false;
         }
 
         function propriedade(p, nomes) {
@@ -211,8 +267,9 @@
         function itemAtendeFiltros(feature, filtros) {
             const ativos = Object.values(filtros).some(nomes => nomes.length > 0);
             if (!ativos) return true;
+
             const nomes = filtros[normalizarTexto(tipoItem(feature))] || [];
-            return nomes.includes(normalizarTexto(nomeItem(feature)));
+            return nomes.some(filtro => itemCorrespondeFiltro(feature, filtro));
         }
 
         // Coloração por saturação: tenta as quatro cores e revisa escolhas quando necessário.
@@ -333,7 +390,10 @@
                 geojsonPerimetros = { type: 'FeatureCollection', features: featuresPerimetros };
                 geojsonItens = { type: 'FeatureCollection', features: featuresItens };
                 if ((temFiltroItens || locaisFiltrados.length > 0) && !featuresPerimetros.length) {
-                    document.getElementById('loading').textContent = 'Nenhum local encontrado para os filtros informados. Confira o grupo, o local e os nomes dos itens na URL.';
+                    document.getElementById('loading').textContent =
+                        'Nenhum local encontrado para os filtros informados. ' +
+                        'Para conjuntos, você pode usar o número (ex.: ?conjunto=4), ' +
+                        'o nome completo ou apenas o nome entre parênteses.';
                     return;
                 }
                 
