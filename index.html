@@ -120,6 +120,15 @@
             const raiz = new Map();
             for (const [chave, valor] of Object.entries(propriedades || {})) {
                 if (ignorarChave(chave) || valor === null || valor === undefined) continue;
+
+                // Metadados estruturados (objetos / arrays de objetos) não devem
+                // aparecer como "[object Object]" no popup.
+                if (typeof valor === 'object') {
+                    if (!Array.isArray(valor) || valor.some(item => item !== null && typeof item === 'object')) {
+                        continue;
+                    }
+                }
+
                 // Texto vazio ou "vazio" cria o nome do campo sem exibir um valor.
                 const somenteNome = typeof valor === 'string'
                     && (valor.trim() === '' || normalizarTexto(valor) === 'vazio');
@@ -721,7 +730,7 @@
                 
                 const separador = listaDetalhes !== '' ? `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;">` : ``;
 
-                const chavesIgnoradas = ['Equipamento', 'nm_equipamento', 'distrito', 'regiao', 'subprefeitura', 'Modalidade da Concessão', 'tx_modalidade_concessao', 'Concessionária', 'nm_concessionaria', 'Investimento', 'qt_investimento_real', 'Prazo da Concessão', 'qt_prazo_concessao', 'Poder Concedente', 'Área', 'Bloco', 'Conjunto', 'Estrutura', 'nm_bloco', 'nm_conjunto', 'nm_estrutura', 'Nome', 'name', 'Tipo', 'Tipo de item', 'tipo_item', 'tipo_estrutura'];
+                const chavesIgnoradas = ['Equipamento', 'nm_equipamento', 'distrito', 'regiao', 'subprefeitura', 'Modalidade da Concessão', 'tx_modalidade_concessao', 'Concessionária', 'nm_concessionaria', 'Investimento', 'qt_investimento_real', 'Prazo da Concessão', 'qt_prazo_concessao', 'Poder Concedente', 'Área', 'Areas', 'Áreas', 'Bloco', 'Conjunto', 'Estrutura', 'nm_bloco', 'nm_conjunto', 'nm_estrutura', 'Nome', 'name', 'Tipo', 'Tipo de item', 'tipo_item', 'tipo_estrutura'];
                 const ignorarChave = chave => chavesIgnoradas.some(k => normalizarTexto(k) === normalizarTexto(chave));
                 
                 const gruposInfra = agruparPropriedades(p, ignorarChave);
@@ -848,7 +857,7 @@
                     itensExibidos = true;
                     currentState = 5;
                     map.closePopup();
-                    atualizarIndicadorCamada(`Blocos / Conjuntos / Estruturas (${tituloObra})`);
+                    atualizarIndicadorCamada("Áreas Internas");
                     if (temItens) {
                         L.geoJSON({ type: 'FeatureCollection', features: itensDoLocal.features.flatMap(separarAreasParaExibicao) }, {
                             style: estiloItem,
