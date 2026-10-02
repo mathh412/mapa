@@ -624,6 +624,18 @@
                 return L.divIcon({ className: 'custom-icon', html: `<div class="badge-local">${stats.total || 0}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
             }
 
+            function obterCentroInterno(feature) {
+                try {
+                    const centroDeMassa = turf.centerOfMass(feature);
+                    const centroEstaDentro = turf.booleanPointInPolygon(centroDeMassa, feature);
+                    const ponto = centroEstaDentro ? centroDeMassa : turf.pointOnFeature(feature);
+                    const [lng, lat] = ponto.geometry.coordinates;
+                    return L.latLng(lat, lng);
+                } catch (erro) {
+                    return L.geoJSON(feature).getBounds().getCenter();
+                }
+            }
+
             function renderizarRegioes() {
                 currentState = 0;
                 atualizarIndicadorCamada("Regiões");
@@ -648,7 +660,7 @@
                         
                         // Garante que a contagem númerica da região apareça na tela
                         if (temDadosNoLocal(stats)) {
-                            L.marker(layer.getBounds().getCenter(), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesReg);
+                            L.marker(obterCentroInterno(feature), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesReg);
                         }
 
                         layer.on('click', function (e) {
@@ -693,7 +705,7 @@
                         layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'subprefeitura')));
                         layer.on('mouseout', () => subprefeiturasLayer.resetStyle(layer));
                         
-                        if (temDadosNoLocal(stats)) L.marker(layer.getBounds().getCenter(), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesSub);
+                        if (temDadosNoLocal(stats)) L.marker(obterCentroInterno(feature), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesSub);
 
                         layer.on('click', function (e) {
                             L.DomEvent.stopPropagation(e);
@@ -729,7 +741,7 @@
                         layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'distrito')));
                         layer.on('mouseout', () => distritosLayer.resetStyle(layer));
                         
-                        if (temDadosNoLocal(stats)) L.marker(layer.getBounds().getCenter(), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesDist);
+                        if (temDadosNoLocal(stats)) L.marker(obterCentroInterno(feature), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesDist);
 
                         layer.on('click', function (e) {
                             L.DomEvent.stopPropagation(e);
