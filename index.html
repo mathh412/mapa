@@ -87,6 +87,181 @@
     <script>
         let regioesGeoJSON, subprefeiturasGeoJSON, distritosGeoJSON, geojsonPerimetros, geojsonItens;
 
+        // ============================================================
+        // INTEGRAÇÃO COM O DASHBOARD QUANDO O MAPA ESTÁ EM UM IFRAME
+        // ============================================================
+        // O mapa continua funcionando normalmente quando aberto sozinho.
+        // Quando estiver dentro do dashboard, as ações relevantes são
+        // enviadas para a página-pai via window.postMessage.
+        const SPP_BRIDGE_SOURCE = 'spp-mapa';
+        const SPP_BRIDGE_VERSION = '1.1.0';
+
+        function origemPaiPreferida() {
+            try {
+                if (!document.referrer) return '*';
+                const origem = new URL(document.referrer).origin;
+                return origem && origem !== 'null' ? origem : '*';
+            } catch (_) {
+                return '*';
+            }
+        }
+
+        const SPP_PARENT_ORIGIN = origemPaiPreferida();
+
+        function enviarAcaoParaPai(type, dados = {}) {
+            const mensagem = {
+                source: SPP_BRIDGE_SOURCE,
+                version: SPP_BRIDGE_VERSION,
+                type,
+                ...dados
+            };
+
+            // Dispara também um evento local, útil para testes quando o mapa
+            // estiver aberto fora de um iframe.
+            try {
+                window.dispatchEvent(new CustomEvent('spp-mapa:' + type, { detail: mensagem }));
+            } catch (_) {}
+
+            if (!window.parent || window.parent === window) return;
+
+            try {
+                window.parent.postMessage(mensagem, SPP_PARENT_ORIGIN);
+            } catch (_) {
+                // Fallback para casos em que o navegador não consegue inferir
+                // a origem da página-pai (por exemplo, arquivo local em testes).
+                window.parent.postMessage(mensagem, '*');
+            }
+        }
+
+        function grupoDaFeature(feature) {
+            if (!feature) return '';
+            return feature.__grupo
+                || feature.properties?.grupo
+                || feature.properties?.Grupo
+                || '';
+        }
+
+        function avisarLocalSelecionado(nomeLocal, feature, origem = 'mapa') {
+            const local = nomeEquipamento(feature) || nomeLocal || '';
+            const localNormalizado = String(local).trim();
+
+            // Evita enviar rótulos genéricos usados em seleções múltiplas.
+            if (!localNormalizado
+                || localNormalizado === 'Local Mapeado'
+                || localNormalizado === 'Locais filtrados') return;
+
+            enviarAcaoParaPai('local-selected', {
+                local: localNormalizado,
+                grupo: grupoDaFeature(feature),
+                distrito: feature?.properties?.distrito || '',
+                origem
+            });
+        }
+
+        function atualizarFiltrosPorMensagem(mensagem) {
+            const url = new URL(window.location.href);
+            let alterou = false;
+
+            const definirLista = (chave, valor) => {
+                const lista = Array.isArray(valor)
+                    ? valor
+                    : (valor === null || valor === undefined || valor === '' ? [] : [valor]);
+
+                const texto = lista
+                    .map(v => String(v).trim())
+                    .filter(Boolean)
+                    .join(',');
+
+                const atual = url.searchParams.get(chave) || '';
+                if (texto) {
+                    if (atual !== texto) {
+                        url.searchParams.set(chave, texto);
+                        alterou = true;
+                    }
+                } else if (url.searchParams.has(chave)) {
+                    url.searchParams.delete(chave);
+                    alterou = true;
+                }
+            };
+
+            if ('grupo' in mensagem || 'grupos' in mensagem) {
+                definirLista('grupo', mensagem.grupos ?? mensagem.grupo);
+                url.searchParams.delete('grupos');
+            }
+
+            if ('local' in mensagem || 'locais' in mensagem) {
+                definirLista('local', mensagem.locais ?? mensagem.local);
+                url.searchParams.delete('locais');
+            }
+
+            if ('conjunto' in mensagem || 'conjuntos' in mensagem) {
+                definirLista('conjunto', mensagem.conjuntos ?? mensagem.conjunto);
+                url.searchParams.delete('conjuntos');
+            }
+
+            if ('bloco' in mensagem || 'blocos' in mensagem) {
+                definirLista('bloco', mensagem.blocos ?? mensagem.bloco);
+                url.searchParams.delete('blocos');
+            }
+
+            if ('estrutura' in mensagem || 'estruturas' in mensagem) {
+                definirLista('estrutura', mensagem.estruturas ?? mensagem.estrutura);
+                url.searchParams.delete('estruturas');
+            }
+
+            if (alterou) window.location.replace(url.toString());
+        }
+
+        // Permite que a página-pai também envie comandos para o iframe.
+        // O dashboard atual não depende disso para filtrar o mapa, pois já
+        // atualiza o src do iframe, mas esta ponte deixa o index preparado
+        // para integrações futuras sem precisar alterar o mapa novamente.
+        window.addEventListener('message', function(event) {
+            if (event.source !== window.parent) return;
+
+            const mensagem = event.data;
+            if (!mensagem || mensagem.source !== 'spp-dashboard') return;
+
+            if (mensagem.type === 'ping') {
+                enviarAcaoParaPai('map-ready', {
+                    fase: 'ping',
+                    url: window.location.href
+                });
+                return;
+            }
+
+            if (mensagem.type === 'set-filter'
+                || mensagem.type === 'set-filters'
+                || mensagem.type === 'focus-local') {
+                atualizarFiltrosPorMensagem(mensagem);
+                return;
+            }
+
+            if (mensagem.type === 'clear-filter' || mensagem.type === 'clear-filters') {
+                atualizarFiltrosPorMensagem({
+                    grupo: mensagem.manterGrupo ? new URL(window.location.href).searchParams.get('grupo') : [],
+                    local: [],
+                    conjunto: [],
+                    bloco: [],
+                    estrutura: []
+                });
+            }
+        });
+
+        // API simples para depuração no console e integrações externas.
+        window.SPPMapaBridge = {
+            version: SPP_BRIDGE_VERSION,
+            enviar: enviarAcaoParaPai,
+            aplicarFiltros: atualizarFiltrosPorMensagem
+        };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            enviarAcaoParaPai('map-ready', {
+                fase: 'dom',
+                url: window.location.href
+            });
+        }, { once: true });
+
         // Os três tipos usam o mesmo vínculo direto com um equipamento.
         function normalizarTexto(texto) {
             return String(texto ?? '')
@@ -402,6 +577,13 @@
                 
                 document.getElementById('indicador-camada').style.display = 'block';
                 inicializarSistema(temFiltroItens);
+
+                enviarAcaoParaPai('map-ready', {
+                    fase: 'dados',
+                    grupos: grupos.slice(),
+                    locais: locaisFiltrados.slice(),
+                    quantidadeLocais: geojsonPerimetros.features.length
+                });
             }).catch(err => {
                 document.getElementById('loading').innerHTML = `<span style="color:#C62828;">Erro ao processar arquivos da nuvem:<br>${err.message}</span>`;
             });
@@ -668,6 +850,7 @@
                             if (temDadosNoLocal(stats) || true) { 
                                 regiaoAtual = nomeRegiao; 
                                 boundsRegiaoAtual = e.target.getBounds();
+                                enviarAcaoParaPai('region-selected', { regiao: nomeRegiao });
                                 map.removeLayer(regioesLayer); badgesReg.removeFrom(map);
                                 map.fitBounds(boundsRegiaoAtual); 
                                 renderizarSubprefeituras(nomeRegiao);
@@ -711,6 +894,10 @@
                             L.DomEvent.stopPropagation(e);
                             subprefeituraAtual = nomeSub; 
                             boundsSubprefeituraAtual = e.target.getBounds();
+                            enviarAcaoParaPai('subprefeitura-selected', {
+                                subprefeitura: nomeSub,
+                                regiao: regiaoAtual || ''
+                            });
                             map.removeLayer(subprefeiturasLayer); badgesSub.removeFrom(map);
                             map.fitBounds(boundsSubprefeituraAtual); 
                             renderizarDistritos(nomeSub);
@@ -745,6 +932,11 @@
 
                         layer.on('click', function (e) {
                             L.DomEvent.stopPropagation(e);
+                            enviarAcaoParaPai('district-selected', {
+                                distrito: nomeDistrito,
+                                subprefeitura: nomeSubClicada || '',
+                                regiao: regiaoAtual || ''
+                            });
                             if (temDadosNoLocal(stats)) mostrarPinsDistrito(nomeDistrito, e.target.getBounds());
                             else map.fitBounds(e.target.getBounds());
                         });
@@ -775,7 +967,11 @@
                     const nomeLocal = nomeEquipamento(f) || 'Local Mapeado';
                     const marker = L.marker([centroid[1], centroid[0]], { icon: pinIcon });
                     marker.bindTooltip(nomeLocal, { permanent: false, direction: 'top', className: 'tooltip-hover-local' });
-                    marker.on('click', function(e) { L.DomEvent.stopPropagation(e); mostrarPerimetroLocal(nomeLocal, f); });
+                    marker.on('click', function(e) {
+                        L.DomEvent.stopPropagation(e);
+                        avisarLocalSelecionado(nomeLocal, f, 'pin');
+                        mostrarPerimetroLocal(nomeLocal, f);
+                    });
                     marker.addTo(pinsLocais);
                 });
                 pinsLocais.addTo(map);
@@ -900,6 +1096,9 @@
                 });
                 camadaPerimetro.on('click', function(e) {
                     L.DomEvent.stopPropagation(e);
+                    if (currentState !== 5) {
+                        avisarLocalSelecionado(nomeLocal, featurePerimetro, 'perimetro');
+                    }
                     if (currentState === 5) {
                         // Clicar na área do perímetro fora dos itens também volta um nível.
                         voltarAoPerimetroAtual();
@@ -988,7 +1187,18 @@
     
                                 const infoBlocoHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br><span style="display:inline-block; margin-top:2px; background:#ddd; padding:2px 5px; border-radius:4px; font-size:10px;">${rotuloTipo.toUpperCase()}: ${tituloBloco}</span>${nomeAreaHTML}</div><hr style="margin: 6px 0;"><b>Detalhes:</b>${listaInfraBlocoHTML}</div>`;
                                 l.options.bubblingMouseEvents = false;
-                                l.bindPopup(infoBlocoHTML); l.on('click', function(e) { L.DomEvent.stopPropagation(e); });
+                                l.bindPopup(infoBlocoHTML);
+                                l.on('click', function(e) {
+                                    L.DomEvent.stopPropagation(e);
+                                    avisarLocalSelecionado(nomeLocal, f, 'divisao-interna');
+                                    enviarAcaoParaPai('internal-item-selected', {
+                                        local: nomeEquipamento(f) || nomeLocal,
+                                        grupo: grupoDaFeature(f),
+                                        tipo: rotuloTipo,
+                                        item: nomeItem(f),
+                                        area: f.__nomeArea || ''
+                                    });
+                                });
                             }
                         }).addTo(itensLayer);
                     }
@@ -1011,6 +1221,10 @@
             }
 
             map.on('click', function () {
+                enviarAcaoParaPai('map-navigation', {
+                    acao: 'voltar',
+                    estadoAnterior: currentState
+                });
                 if (currentState === 5) {
                     // Fora dos itens: retorna somente ao perímetro, sem pular para os pins.
                     voltarAoPerimetroAtual();
