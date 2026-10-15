@@ -100,7 +100,7 @@
 const EQUIPMENT_TYPES={
  education:{label:'CEU / Educação',color:'#2563a6',path:'M3 4h7l2 2 2-2h7v15h-7l-2 2-2-2H3z M12 6v15'},
  park:{label:'Parque',color:'#28754c',path:'M12 3 5 12h3l-4 5h16l-4-5h3z M12 17v5'},
- terminal:{label:'Terminal de transporte',color:'#6850a1',path:'M6 19v3m12-3v3M5 4q7-3 14 0v15H5z M5 11h14 M8 15h1m6 0h1'},
+ terminal:{label:'Terminal',color:'#6850a1',path:'M6 19v3m12-3v3M5 4q7-3 14 0v15H5z M5 11h14 M8 15h1m6 0h1'},
  market:{label:'Mercado',color:'#a76517',path:'M3 9h18l-2 12H5z M7 9l5-7 5 7 M9 13v5m6-5v5'},
  sport:{label:'Esporte',color:'#b74c27',path:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M3 12h18 M12 3v18 M6 5q12 7 0 14 M18 5q-12 7 0 14'},
  cemetery:{label:'Cemitério',color:'#626975',path:'M6 20V9a6 6 0 0 1 12 0v11 M3 21h18 M9 11h6 M9 15h6'},
@@ -1041,9 +1041,9 @@ function equipmentLegend(rows){const counts={};for(const f of rows){const t=equi
                 geojsonPerimetros.features.filter(f => f.properties.distrito === nomeDistrito).forEach(f => {
                     const centroid = turf.centroid(f).geometry.coordinates;
                     const nomeLocal = nomeEquipamento(f) || 'Local Mapeado';
-                    const marker = L.marker([centroid[1], centroid[0]], { icon: typeIcon(f), title:nomeLocal+' · '+equipmentType(f).label, alt:nomeLocal+' · '+equipmentType(f).label });
-                    marker.on('add',()=>marker.getElement()?.setAttribute('aria-label',nomeLocal+' · '+equipmentType(f).label));
-                    marker.bindTooltip(escaparHTML(nomeLocal)+'<br>'+escaparHTML(equipmentType(f).label), { permanent: false, direction: 'top', className: 'tooltip-hover-local' });
+                    const marker = L.marker([centroid[1], centroid[0]], { icon: typeIcon(f), title:nomeLocal, alt:nomeLocal });
+                    marker.on('add',()=>marker.getElement()?.setAttribute('aria-label',nomeLocal));
+                    marker.bindTooltip(escaparHTML(nomeLocal), { permanent: false, direction: 'top', className: 'tooltip-hover-local' });
                     marker.on('click', function(e) {
                         L.DomEvent.stopPropagation(e);
                         avisarLocalSelecionado(nomeLocal, f, 'pin');
@@ -1102,11 +1102,11 @@ function equipmentLegend(rows){const counts={};for(const f of rows){const t=equi
                     ? `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;"><b>Informações gerais:</b>${renderizarGrupos(gruposInfra)}`
                     : '';
 
-                const infoGeralHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br>${equipmentIcon(featurePerimetro)} <span>${equipmentType(featurePerimetro).label}</span></div>${separador}${listaDetalhes}${infraPerimetroHTML}<div style="text-align:center; margin-top: 8px;">${avisoItens}</div></div>`;
+                const infoGeralHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${equipmentIcon(featurePerimetro)} ${tituloObra}</strong></div>${separador}${listaDetalhes}${infraPerimetroHTML}<div style="text-align:center; margin-top: 8px;">${avisoItens}</div></div>`;
 
                 const camadaPerimetro = L.geoJSON(featurePerimetro, { style: { color: "#E65100", weight: 3, fillColor: "#F57C00", fillOpacity: 0.2, dashArray: "5, 5" } }).addTo(perimetrosLayer);
                 const centerType=turf.centroid(featurePerimetro).geometry.coordinates;
-                L.marker([centerType[1],centerType[0]],{icon:L.divIcon({className:'custom-type-pin',html:equipmentIcon(featurePerimetro),iconSize:[32,32],iconAnchor:[16,16]}),title:nomeLocal+' · '+equipmentType(featurePerimetro).label,alt:nomeLocal+' · '+equipmentType(featurePerimetro).label}).bindTooltip(escaparHTML(nomeLocal)+' · '+equipmentType(featurePerimetro).label).bindPopup(infoGeralHTML).addTo(perimetrosLayer);
+                L.marker([centerType[1],centerType[0]],{icon:L.divIcon({className:'custom-type-pin',html:equipmentIcon(featurePerimetro),iconSize:[32,32],iconAnchor:[16,16]}),title:nomeLocal,alt:nomeLocal}).bindTooltip(escaparHTML(nomeLocal)).bindPopup(infoGeralHTML).addTo(perimetrosLayer);
                 // Card fixo e interativo: permanece aberto ao mover o mouse até ele.
                 const cardPerimetro = L.popup({
                     maxWidth: 360,
