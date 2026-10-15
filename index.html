@@ -94,7 +94,37 @@
         // Quando estiver dentro do dashboard, as ações relevantes são
         // enviadas para a página-pai via window.postMessage.
         const SPP_BRIDGE_SOURCE = 'spp-mapa';
-        const SPP_BRIDGE_VERSION = '1.1.0';
+        const SPP_BRIDGE_VERSION = '2.0.0';
+        const SPP_ALL_GROUPS = ['anhangabau','anhembi','baixoantartica','baixolapa','baixopompeia','cemb1consolare','cemb2cortel','cemb3maya','cemb4velar','ceus1','ceus2','dompedro','mercadopaulistanokinjo','mercadosantoamaro','pacaembu','parques1','parques3','termleste','termnoroeste','termsul'];
+        const sppPlural={grupo:'grupos',local:'locais',regiao:'regioes',subprefeitura:'subprefeituras',distrito:'distritos',conjunto:'conjuntos',bloco:'blocos',estrutura:'estruturas'};
+        const initialParams = new URLSearchParams(location.search);
+        let sppFilters = Object.fromEntries(['grupo','local','regiao','subprefeitura','distrito','conjunto','bloco','estrutura','vazio'].map(k=>[k,['regiao','subprefeitura','distrito','vazio'].includes(k)?initialParams.get(k)||'':[...initialParams.getAll(k),...initialParams.getAll(sppPlural[k])].flatMap(v=>v.split(','))]));
+        let sppMap = null, sppBasePerimetros = null, sppBaseItens = null, sppCatalog = [];
+        const sppList = value => (Array.isArray(value)?value:String(value||'').split(',')).map(normalizarTexto).filter(Boolean);
+        const sppEquals = (a,b) => normalizarTexto(a).replace(/^zona /,'')===normalizarTexto(b).replace(/^zona /,'');
+        // grupo accepts individual groups, city zones, or todos. Combinations form a union.
+        function sppGroupRegion(value){
+            const key=normalizarTexto(value).replace(/[\s_-]+/g,'');
+            return {zonasul:'Sul',sul:'Sul',zonanorte:'Norte',norte:'Norte',zonaleste:'Leste',leste:'Leste',zonaoeste:'Oeste',oeste:'Oeste',zonacentral:'Centro',zonacentro:'Centro',centro:'Centro',central:'Centro'}[key]||'';
+        }
+        function sppGroupMatches(groups,group,region){
+            return groups.includes('todos')||groups.some(value=>{
+                const zone=sppGroupRegion(value);
+                return zone?sppEquals(zone,region):value===normalizarTexto(group);
+            });
+        }
+        function sppApplyFilters(message){
+            for(const k of ['grupo','local','regiao','subprefeitura','distrito','conjunto','bloco','estrutura','vazio']){
+                if(k in message)sppFilters[k]=message[k];
+                else if(sppPlural[k] in message)sppFilters[k]=message[sppPlural[k]];
+            }
+            if(!sppBasePerimetros)return;
+            if(sppMap){sppMap.stop();sppMap.remove();sppMap=null;}
+            geojsonPerimetros={type:'FeatureCollection',features:sppBasePerimetros.slice()};
+            geojsonItens={type:'FeatureCollection',features:sppBaseItens.slice()};
+            inicializarSistema(sppList(sppFilters.bloco).length+sppList(sppFilters.conjunto).length+sppList(sppFilters.estrutura).length>0);
+        }
+
 
         function origemPaiPreferida() {
             try {
@@ -217,7 +247,8 @@
         // atualiza o src do iframe, mas esta ponte deixa o index preparado
         // para integrações futuras sem precisar alterar o mapa novamente.
         window.addEventListener('message', function(event) {
-            if (event.source !== window.parent) return;
+            if (event.source !== window.parent || window.parent === window) return;
+            if (SPP_PARENT_ORIGIN !== '*' && event.origin !== SPP_PARENT_ORIGIN) return;
 
             const mensagem = event.data;
             if (!mensagem || mensagem.source !== 'spp-dashboard') return;
@@ -233,13 +264,14 @@
             if (mensagem.type === 'set-filter'
                 || mensagem.type === 'set-filters'
                 || mensagem.type === 'focus-local') {
-                atualizarFiltrosPorMensagem(mensagem);
+                sppApplyFilters(mensagem);
                 return;
             }
 
             if (mensagem.type === 'clear-filter' || mensagem.type === 'clear-filters') {
-                atualizarFiltrosPorMensagem({
-                    grupo: mensagem.manterGrupo ? new URL(window.location.href).searchParams.get('grupo') : [],
+                sppApplyFilters({
+                    regiao: "", subprefeitura: "", distrito: "", vazio: false,
+                    grupo: mensagem.manterGrupo ? sppFilters.grupo : [],
                     local: [],
                     conjunto: [],
                     bloco: [],
@@ -252,7 +284,7 @@
         window.SPPMapaBridge = {
             version: SPP_BRIDGE_VERSION,
             enviar: enviarAcaoParaPai,
-            aplicarFiltros: atualizarFiltrosPorMensagem
+            aplicarFiltros: sppApplyFilters
         };
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -484,12 +516,10 @@
 
         try {
             const urlParams = new URLSearchParams(window.location.search);
-            const grupos = lerFiltroURL(urlParams, 'grupo', 'grupos');
-            const locaisFiltrados = lerFiltroURL(urlParams, 'local', 'locais');
+            const grupos = [...new Set([...SPP_ALL_GROUPS,...sppList(sppFilters.grupo).filter(g=>g!=='todos'&&!sppGroupRegion(g)&&/^[a-z0-9_-]+$/.test(g))])];
+            const locaisFiltrados = [];
             const filtrosItens = {
-                conjunto: lerFiltroURL(urlParams, 'conjunto', 'conjuntos'),
-                bloco: lerFiltroURL(urlParams, 'bloco', 'blocos'),
-                estrutura: lerFiltroURL(urlParams, 'estrutura', 'estruturas')
+                conjunto: [], bloco: [], estrutura: []
             };
             const temFiltroItens = Object.values(filtrosItens).some(nomes => nomes.length > 0);
 
@@ -582,7 +612,8 @@
                     fase: 'dados',
                     grupos: grupos.slice(),
                     locais: locaisFiltrados.slice(),
-                    quantidadeLocais: geojsonPerimetros.features.length
+                    quantidadeLocais: geojsonPerimetros.features.length,
+                    catalogo: sppCatalog
                 });
             }).catch(err => {
                 document.getElementById('loading').innerHTML = `<span style="color:#C62828;">Erro ao processar arquivos da nuvem:<br>${err.message}</span>`;
@@ -730,7 +761,29 @@
                 });
             }
             
-            const map = L.map('map', { maxZoom: 20 }).setView([-23.5505, -46.6333], 11);
+                        if(!sppBasePerimetros){
+                sppBasePerimetros=geojsonPerimetros.features.slice();
+                sppBaseItens=geojsonItens.features.slice();
+                sppCatalog=sppBasePerimetros.map(f=>({grupo:grupoDaFeature(f),local:nomeEquipamento(f),distrito:f.properties.distrito||'',subprefeitura:buscarSubprefeitura(f.properties.distrito)||'',regiao:buscarRegiao(buscarSubprefeitura(f.properties.distrito))||'',properties:f.properties,geometry:f.geometry,center:turf.centroid(f).geometry.coordinates}));
+            }
+            const wantedGroups=sppList(sppFilters.grupo), wantedLocals=sppList(sppFilters.local);
+            const wantedItems={conjunto:sppList(sppFilters.conjunto),bloco:sppList(sppFilters.bloco),estrutura:sppList(sppFilters.estrutura)};
+            const hasItems=Object.values(wantedItems).some(a=>a.length);
+            abrirItensFiltrados=hasItems;
+            geojsonItens.features=sppBaseItens.filter(f=>itemAtendeFiltros(f,wantedItems));
+            geojsonPerimetros.features=sppBasePerimetros.filter(f=>{
+                const district=f.properties.distrito, sub=buscarSubprefeitura(district),region=buscarRegiao(sub);
+                return !(sppFilters.vazio===true||sppFilters.vazio==='true')&&
+                 sppGroupMatches(wantedGroups,grupoDaFeature(f),region)&&
+                 (!wantedLocals.length||wantedLocals.includes(normalizarTexto(nomeEquipamento(f))))&&
+                 (!sppFilters.regiao||sppEquals(sppFilters.regiao,region))&&
+                 (!sppFilters.subprefeitura||sppEquals(sppFilters.subprefeitura,sub))&&
+                 (!sppFilters.distrito||sppEquals(sppFilters.distrito,district))&&
+                 (!hasItems||geojsonItens.features.some(item=>pertenceAoEquipamento(item,f)));
+            });
+            geojsonItens.features=geojsonItens.features.filter(item=>geojsonPerimetros.features.some(f=>grupoDaFeature(f)===grupoDaFeature(item)&&pertenceAoEquipamento(item,f)));
+
+            const map = sppMap = L.map('map', { maxZoom: 20, zoomAnimation:false, fadeAnimation:false, markerZoomAnimation:false }).setView([-23.5505, -46.6333], 11);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri', 
                 // O fundo usa imagens até 16; os polígonos podem aproximar até 20.
@@ -836,6 +889,7 @@
                     onEachFeature: function (feature, layer) {
                         const nomeRegiao = extrairNomeRegiao(feature);
                         const stats = contagemRegiao[nomeRegiao];
+                        layer.on('add',()=>{const el=layer.getElement();if(el){el.setAttribute('role','button');el.setAttribute('aria-label',nomeRegiao);el.setAttribute('tabindex','0');el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();layer.fire('click',{target:layer,originalEvent:e});}});}});
 
                         layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'regiao')));
                         layer.on('mouseout', () => regioesLayer.resetStyle(layer));
@@ -884,6 +938,7 @@
                     onEachFeature: function (feature, layer) {
                         const nomeSub = extrairNomeSub(feature);
                         const stats = contagemSub[nomeSub];
+                        layer.on('add',()=>{const el=layer.getElement();if(el){el.setAttribute('role','button');el.setAttribute('aria-label',nomeSub);el.setAttribute('tabindex','0');el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();layer.fire('click',{target:layer,originalEvent:e});}});}});
 
                         layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'subprefeitura')));
                         layer.on('mouseout', () => subprefeiturasLayer.resetStyle(layer));
@@ -924,6 +979,7 @@
                     onEachFeature: function (feature, layer) {
                         const nomeDistrito = extrairNomeDistrito(feature);
                         const stats = contagemDist[nomeDistrito];
+                        layer.on('add',()=>{const el=layer.getElement();if(el){el.setAttribute('role','button');el.setAttribute('aria-label',nomeDistrito);el.setAttribute('tabindex','0');el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();layer.fire('click',{target:layer,originalEvent:e});}});}});
 
                         layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'distrito')));
                         layer.on('mouseout', () => distritosLayer.resetStyle(layer));
@@ -965,7 +1021,8 @@
                 geojsonPerimetros.features.filter(f => f.properties.distrito === nomeDistrito).forEach(f => {
                     const centroid = turf.centroid(f).geometry.coordinates;
                     const nomeLocal = nomeEquipamento(f) || 'Local Mapeado';
-                    const marker = L.marker([centroid[1], centroid[0]], { icon: pinIcon });
+                    const marker = L.marker([centroid[1], centroid[0]], { icon: pinIcon, title:nomeLocal, alt:nomeLocal });
+                    marker.on('add',()=>marker.getElement()?.setAttribute('aria-label',nomeLocal));
                     marker.bindTooltip(nomeLocal, { permanent: false, direction: 'top', className: 'tooltip-hover-local' });
                     marker.on('click', function(e) {
                         L.DomEvent.stopPropagation(e);
@@ -1220,6 +1277,8 @@
                 }
             }
 
+            const backControl=L.control({position:'topleft'});
+            backControl.onAdd=()=>{const box=L.DomUtil.create('div','leaflet-bar');const button=L.DomUtil.create('button','',box);button.type='button';button.textContent='←';button.title='Voltar um nível';button.setAttribute('aria-label','Voltar um nível');button.style.cssText='width:30px;height:30px;background:white;border:0;cursor:pointer;font-size:20px';L.DomEvent.disableClickPropagation(box);button.onclick=()=>map.fire('click');return box;};backControl.addTo(map);
             map.on('click', function () {
                 enviarAcaoParaPai('map-navigation', {
                     acao: 'voltar',
@@ -1256,6 +1315,10 @@
                     renderizarRegioes();
                     if (regioesLayer) map.fitBounds(regioesLayer.getBounds(), { padding: [0, 0] });
                 }
+                enviarAcaoParaPai('navigation-state', {nivel:currentState,
+                    regiao:currentState>=1?regiaoAtual||'':'',
+                    subprefeitura:currentState>=2?subprefeituraAtual||'':'',
+                    distrito:currentState>=3?distritoAtual||'':''});
             });
 
             const regsAtivas = Object.keys(contagemRegiao).filter(k => contagemRegiao[k].total > 0);
@@ -1263,7 +1326,25 @@
             const distsAtivos = Object.keys(contagemDist).filter(k => contagemDist[k].total > 0);
             const numLocais = geojsonPerimetros.features ? geojsonPerimetros.features.length : 0;
 
-            if (numLocais === 1) {
+            const requestedDistrict=distritosGeoJSON.features.find(f=>sppFilters.distrito&&sppEquals(extrairNomeDistrito(f),sppFilters.distrito));
+            const requestedSub=subprefeiturasGeoJSON.features.find(f=>sppFilters.subprefeitura&&sppEquals(extrairNomeSub(f),sppFilters.subprefeitura));
+            const effectiveRegion=sppFilters.regiao||(wantedGroups.length===1?sppGroupRegion(wantedGroups[0]):'');
+            const requestedRegion=regioesGeoJSON.features.find(f=>effectiveRegion&&sppEquals(extrairNomeRegiao(f),effectiveRegion));
+            if(!numLocais){
+                renderizarRegioes();
+                if(regioesLayer)map.fitBounds(regioesLayer.getBounds());
+                atualizarIndicadorCamada('Nenhum equipamento neste recorte');
+            } else if(!wantedLocals.length&&!hasItems&&(requestedDistrict||requestedSub||requestedRegion)){
+                regiaoAtual=requestedRegion?extrairNomeRegiao(requestedRegion):requestedSub?buscarRegiao(extrairNomeSub(requestedSub)):buscarRegiao(buscarSubprefeitura(extrairNomeDistrito(requestedDistrict)));
+                const regionFeature=regioesGeoJSON.features.find(f=>sppEquals(extrairNomeRegiao(f),regiaoAtual));
+                if(regionFeature)boundsRegiaoAtual=L.geoJSON(regionFeature).getBounds();
+                subprefeituraAtual=requestedSub?extrairNomeSub(requestedSub):requestedDistrict?buscarSubprefeitura(extrairNomeDistrito(requestedDistrict)):null;
+                const subFeature=subprefeiturasGeoJSON.features.find(f=>sppEquals(extrairNomeSub(f),subprefeituraAtual));
+                if(subFeature)boundsSubprefeituraAtual=L.geoJSON(subFeature).getBounds();
+                if(requestedDistrict)mostrarPinsDistrito(extrairNomeDistrito(requestedDistrict),L.geoJSON(requestedDistrict).getBounds());
+                else if(requestedSub){renderizarDistritos(subprefeituraAtual);map.fitBounds(boundsSubprefeituraAtual);}
+                else {renderizarSubprefeituras(regiaoAtual);map.fitBounds(boundsRegiaoAtual);}
+            } else if (numLocais === 1) {
                 const featureUnica = geojsonPerimetros.features[0];
                 const nomeLocalUnico = nomeEquipamento(featureUnica) || 'Local Mapeado';
                 const distUnico = featureUnica.properties.distrito;
@@ -1330,3 +1411,4 @@
     </script>
 </body>
 </html>
+
