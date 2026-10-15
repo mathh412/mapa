@@ -96,7 +96,7 @@
         // Quando estiver dentro do dashboard, as ações relevantes são
         // enviadas para a página-pai via window.postMessage.
         const SPP_BRIDGE_SOURCE = 'spp-mapa';
-        const SPP_BRIDGE_VERSION = '2.1.0';
+        const SPP_BRIDGE_VERSION = '2.1.1';
 const EQUIPMENT_TYPES={
  education:{label:'CEU / Educação',color:'#2563a6',path:'M3 4h7l2 2 2-2h7v15h-7l-2 2-2-2H3z M12 6v15'},
  park:{label:'Parque',color:'#28754c',path:'M12 3 5 12h3l-4 5h16l-4-5h3z M12 17v5'},
@@ -892,6 +892,7 @@ function equipmentLegend(rows){const counts={};for(const f of rows){const t=equi
             }
 
             function renderizarRegioes() {
+                atualizarLegendaTipos();
                 currentState = 0;
                 atualizarIndicadorCamada("Regiões");
                 
@@ -940,6 +941,7 @@ function equipmentLegend(rows){const counts={};for(const f of rows){const t=equi
             }
 
             function renderizarSubprefeituras(nomeRegiaoFiltro = null) {
+                atualizarLegendaTipos('regiao',nomeRegiaoFiltro);
                 currentState = 1;
                 atualizarIndicadorCamada(nomeRegiaoFiltro ? `Subprefeituras (${nomeRegiaoFiltro})` : "Subprefeituras");
                 
@@ -984,6 +986,7 @@ function equipmentLegend(rows){const counts={};for(const f of rows){const t=equi
             }
 
             function renderizarDistritos(nomeSubClicada) {
+                atualizarLegendaTipos('subprefeitura',nomeSubClicada);
                 currentState = 2;
                 atualizarIndicadorCamada(`Distritos (${nomeSubClicada})`);
                 
@@ -1023,6 +1026,7 @@ function equipmentLegend(rows){const counts={};for(const f of rows){const t=equi
             }
 
             function mostrarPinsDistrito(nomeDistrito, boundsDistrito) {
+                atualizarLegendaTipos('distrito',nomeDistrito);
                 currentState = 3; 
                 distritoAtual = nomeDistrito; boundsDistritoAtual = boundsDistrito;
                 atualizarIndicadorCamada(`Locais (${nomeDistrito})`);
@@ -1055,6 +1059,7 @@ function equipmentLegend(rows){const counts={};for(const f of rows){const t=equi
             }
 
             function mostrarPerimetroLocal(nomeLocal, featurePerimetro, abrirDiretamente = false) {
+                atualizarLegendaTipos('local',nomeLocal,featurePerimetro.type==='FeatureCollection'?featurePerimetro.features:[featurePerimetro]);
                 voltarAoPerimetroAtual = () => mostrarPerimetroLocal(nomeLocal, featurePerimetro);
                 currentState = 4; 
                 atualizarIndicadorCamada(`Perímetro (${escaparHTML(nomeLocal)})`);
@@ -1299,8 +1304,22 @@ function equipmentLegend(rows){const counts={};for(const f of rows){const t=equi
                 }
             }
 
+            let typeLegendBox=null;
+            function atualizarLegendaTipos(nivel='geral',valor='',locais=null){
+                const rows=(locais||geojsonPerimetros.features).filter(f=>{
+                    const district=f.properties?.distrito||'',sub=buscarSubprefeitura(district),region=buscarRegiao(sub);
+                    if(nivel==='regiao'&&valor)return sppEquals(region,valor);
+                    if(nivel==='subprefeitura'&&valor)return sppEquals(sub,valor);
+                    if(nivel==='distrito'&&valor)return sppEquals(district,valor);
+                    return true;
+                });
+                if(!typeLegendBox)return;
+                const open=typeLegendBox.querySelector('details')?.open||false;
+                const scope=valor||'Recorte atual';
+                typeLegendBox.innerHTML='<details'+(open?' open':'')+'><summary>Tipos de equipamento · '+escaparHTML(scope)+'</summary><div class="equipment-legend-list">'+equipmentLegend(rows)+'</div><p>'+rows.length+' equipamento(s) neste recorte. Classificação por parceria.</p></details>';
+            }
             const typeLegend=L.control({position:'bottomright'});
-            typeLegend.onAdd=()=>{const box=L.DomUtil.create('div','equipment-map-legend');box.innerHTML='<details><summary>Tipos de equipamento</summary><div class="equipment-legend-list">'+equipmentLegend(geojsonPerimetros.features)+'</div><p>Classificação por parceria. Aproximar e entrar no distrito exibe os ícones de cada local.</p></details>';L.DomEvent.disableClickPropagation(box);L.DomEvent.disableScrollPropagation(box);return box;};typeLegend.addTo(map);
+            typeLegend.onAdd=()=>{typeLegendBox=L.DomUtil.create('div','equipment-map-legend');atualizarLegendaTipos();L.DomEvent.disableClickPropagation(typeLegendBox);L.DomEvent.disableScrollPropagation(typeLegendBox);return typeLegendBox;};typeLegend.addTo(map);
             const backControl=L.control({position:'topleft'});
             backControl.onAdd=()=>{const box=L.DomUtil.create('div','leaflet-bar');const button=L.DomUtil.create('button','',box);button.type='button';button.textContent='←';button.title='Voltar um nível';button.setAttribute('aria-label','Voltar um nível');button.style.cssText='width:30px;height:30px;background:white;border:0;cursor:pointer;font-size:20px';L.DomEvent.disableClickPropagation(box);button.onclick=()=>map.fire('click');return box;};backControl.addTo(map);
             map.on('click', function () {
