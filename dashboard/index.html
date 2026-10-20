@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análise Socioterritorial - SPP</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="./css/dashboard.css">
+    <link rel="stylesheet" href="./css/mapa-iframe.css">
+    <link rel="stylesheet" href="./css/comparacao.css">
+</head>
+<body>
+<div id="app">
+
+    <header class="cabecalho">
+        <div class="cabecalho-identidade">
+            <div class="marca-dashboard">
+                <div class="marca-simbolo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M4 20V8 l8-4 8 4 v12"></path>
+                        <path d="M8 20v-7h8v7"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1>Análise Socioterritorial</h1>
+                    <p>Plataforma de análise territorial de projetos e parcerias</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="cabecalho-status">
+            <span class="status-geral-dot"></span>
+            <span>Dados territoriais</span>
+        </div>
+    </header>
+
+    <section class="filtros">
+        <div class="campo-filtro">
+            <label for="filtro-parceria">Parceria</label>
+            <select id="filtro-parceria" disabled>
+                <option>Selecione</option>
+            </select>
+        </div>
+
+        <div class="campo-filtro">
+            <label for="filtro-local">Local</label>
+            <select id="filtro-local" disabled>
+                <option>Selecione</option>
+            </select>
+        </div>
+
+        <div class="campo-filtro campo-raio">
+            <div class="linha-label">
+                <label for="filtro-raio">Raio de influência</label>
+                <span id="valor-raio">1,0 km</span>
+            </div>
+
+            <input
+                id="filtro-raio"
+                type="range"
+                min="100"
+                max="5000"
+                step="50"
+                value="1000"
+                disabled
+            >
+
+            <div class="escala-raio">
+                <span>100 m</span>
+                <span>5 km</span>
+            </div>
+        </div>
+
+        <div class="campo-filtro">
+            <label for="filtro-criterio">Critério territorial</label>
+            <select id="filtro-criterio" disabled>
+                <option value="centroide">Centroide</option>
+                <option value="intersecao">Interseção</option>
+                <option value="proporcional">Área proporcional</option>
+            </select>
+        </div>
+    </section>
+
+    <nav class="navegacao-abas" role="tablist">
+        <button class="aba-navegacao ativa" data-tab="visao-geral" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M4 4h6v6H4z"></path>
+                <path d="M14 4h6v6h-6z"></path>
+                <path d="M4 14h6v6H4z"></path>
+                <path d="M14 14h6v6h-6z"></path>
+            </svg>
+            <span>Visão Geral</span>
+        </button>
+
+        <button class="aba-navegacao" data-tab="sociodemografico" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="9" cy="8" r="3"></circle>
+                <path d="M3 20 c0-4 2-7 6-7 s6 3 6 7"></path>
+                <circle cx="17" cy="9" r="2"></circle>
+            </svg>
+            <span>Sociodemográfico</span>
+        </button>
+
+        <button class="aba-navegacao" data-tab="vulnerabilidade" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M4 20V12 h4v8 M10 20V7 h4v13 M16 20V3 h4v17"></path>
+            </svg>
+            <span>Vulnerabilidade e Renda</span>
+        </button>
+
+        <button class="aba-navegacao" data-tab="comparacao" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M7 4v16"></path>
+                <path d="M17 4v16"></path>
+                <path d="M3 8h8"></path>
+                <path d="M13 16h8"></path>
+            </svg>
+            <span>Comparação</span>
+        </button>
+    </nav>
+
+    <main class="workspace">
+
+        <section id="tab-visao-geral" class="tab-panel ativa">
+            <div class="layout-visao-geral">
+
+                <section class="painel painel-mapa">
+                    <div class="titulo-painel titulo-mapa">
+                        <div>
+                            <h2>Área de influência</h2>
+                            <p id="subtitulo-mapa">Selecione um empreendimento</p>
+                        </div>
+
+                        <div class="controles-mapa">
+                            <div class="controle-tema">
+                                <label for="filtro-tema-mapa">Colorir setores por</label>
+                                <select id="filtro-tema-mapa" disabled>
+                                    <option value="padrao">Seleção</option>
+                                    <option value="ipvs">Vulnerabilidade / IPVS</option>
+                                    <option value="renda">Renda</option>
+                                    <option value="densidade">Densidade populacional</option>
+                                    <option value="pretaparda">% população preta + parda</option>
+                                    <option value="feminina">% população feminina</option>
+                                </select>
+                            </div>
+
+                            <div class="status-dados">
+                                <span id="status-indicador" class="status-carregando"></span>
+                                <span id="status-texto">Carregando dados...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mapa-principal mapa-iframe-container">
+                        <iframe
+                            id="mapa-spp-iframe"
+                            class="mapa-spp-iframe"
+                            src="../index.html?embed=1&grupo=todos"
+                            title="Mapa de Parcerias SPP"
+                            loading="eager"
+                        ></iframe>
+
+                        <div id="mapa-iframe-loading" class="mapa-iframe-loading">
+                            <div class="mapa-iframe-spinner"></div>
+                            <span>Carregando mapa...</span>
+                        </div>
+                    </div>
+
+                    <div id="legenda-mapa" class="legenda-mapa">
+                        <div class="legenda-titulo">Área selecionada</div>
+                        <div class="item-legenda">
+                            <span class="cor-legenda" style="background:#3b7d95"></span>
+                            Setores selecionados
+                        </div>
+                    </div>
+                </section>
+
+                <aside class="coluna-indicadores">
+                    <div class="card-indicador">
+                        <div class="card-icone">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <path d="M3 5h18v14H3z"></path>
+                                <path d="M8 5v14"></path>
+                                <path d="M15 5v14"></path>
+                                <path d="M3 11h18"></path>
+                            </svg>
+                        </div>
+                        <div class="card-conteudo">
+                            <div class="card-titulo">Setores censitários</div>
+                            <div class="card-valor" id="card-setores">-</div>
+                            <div class="card-rodape">setores na área selecionada</div>
+                        </div>
+                    </div>
+
+                    <div class="card-indicador">
+                        <div class="card-icone">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <circle cx="9" cy="8" r="3"></circle>
+                                <path d="M3 20 c0-4 2-7 6-7 s6 3 6 7"></path>
+                            </svg>
+                        </div>
+                        <div class="card-conteudo">
+                            <div class="card-titulo">População</div>
+                            <div class="card-valor" id="card-populacao">-</div>
+                            <div id="rodape-populacao" class="card-rodape">habitantes</div>
+                        </div>
+                    </div>
+
+                    <div class="card-indicador">
+                        <div class="card-icone">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <circle cx="12" cy="12" r="9"></circle>
+                                <path d="M12 5v14"></path>
+                            </svg>
+                        </div>
+                        <div class="card-conteudo">
+                            <div class="card-titulo">Renda dos responsáveis</div>
+                            <div class="card-valor" id="card-renda">-</div>
+                            <div class="card-rodape">mediana entre setores</div>
+                        </div>
+                    </div>
+
+                    <div class="card-indicador">
+                        <div class="card-icone">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <path d="M12 3 l8 4 v5 c0 5-3 8-8 9 c-5-1-8-4-8-9 V7z"></path>
+                                <path d="M9 12l2 2 4-5"></path>
+                            </svg>
+                        </div>
+                        <div class="card-conteudo">
+                            <div class="card-titulo">Setores com IPVS</div>
+                            <div class="card-valor" id="card-ipvs">-</div>
+                            <div class="card-rodape">cobertura da classificação</div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </section>
+
+        <section id="tab-sociodemografico" class="tab-panel">
+            <div class="cabecalho-pagina">
+                <div>
+                    <span class="eyebrow">Perfil da população</span>
+                    <h2>Caracterização sociodemográfica</h2>
+                    <p>Composição da população dos setores pertencentes à área de influência selecionada.</p>
+                </div>
+            </div>
+
+            <div class="grid-sociodemografico">
+                <section class="painel painel-analitico">
+                    <div class="titulo-painel">
+                        <div>
+                            <h2>Raça / Cor</h2>
+                            <p>Distribuição percentual da população</p>
+                        </div>
+                    </div>
+
+                    <div id="grafico-raca">
+                        <div class="linha-barra">
+                            <span class="nome-barra">Branca</span>
+                            <div class="trilho-barra"><div id="barra-branca" class="barra"></div></div>
+                            <span id="valor-branca" class="valor-barra">-</span>
+                        </div>
+
+                        <div class="linha-barra">
+                            <span class="nome-barra">Parda</span>
+                            <div class="trilho-barra"><div id="barra-parda" class="barra"></div></div>
+                            <span id="valor-parda" class="valor-barra">-</span>
+                        </div>
+
+                        <div class="linha-barra">
+                            <span class="nome-barra">Preta</span>
+                            <div class="trilho-barra"><div id="barra-preta" class="barra"></div></div>
+                            <span id="valor-preta" class="valor-barra">-</span>
+                        </div>
+
+                        <div class="linha-barra">
+                            <span class="nome-barra">Amarela</span>
+                            <div class="trilho-barra"><div id="barra-amarela" class="barra"></div></div>
+                            <span id="valor-amarela" class="valor-barra">-</span>
+                        </div>
+
+                        <div class="linha-barra">
+                            <span class="nome-barra">Indígena</span>
+                            <div class="trilho-barra"><div id="barra-indigena" class="barra"></div></div>
+                            <span id="valor-indigena" class="valor-barra">-</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="painel painel-analitico">
+                    <div class="titulo-painel">
+                        <div>
+                            <h2>Gênero</h2>
+                            <p>Distribuição da população</p>
+                        </div>
+                    </div>
+
+                    <div class="genero-container">
+                        <div class="genero-item">
+                            <div class="genero-label">Feminina</div>
+                            <div id="valor-feminina" class="genero-valor">-</div>
+                            <div id="percentual-feminina" class="genero-percentual">-</div>
+                        </div>
+
+                        <div class="divisor-genero"></div>
+
+                        <div class="genero-item">
+                            <div class="genero-label">Masculina</div>
+                            <div id="valor-masculina" class="genero-valor">-</div>
+                            <div id="percentual-masculina" class="genero-percentual">-</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </section>
+
+        <section id="tab-vulnerabilidade" class="tab-panel">
+            <div class="cabecalho-pagina">
+                <div>
+                    <span class="eyebrow">Condições socioeconômicas</span>
+                    <h2>Vulnerabilidade e renda</h2>
+                    <p>Análise dos indicadores socioeconômicos conforme a distância do empreendimento.</p>
+                </div>
+            </div>
+
+            <div class="grid-vulnerabilidade">
+                <section class="painel painel-ipvs">
+                    <div class="titulo-painel">
+                        <div>
+                            <h2>Vulnerabilidade</h2>
+                            <p>Distribuição dos setores com IPVS</p>
+                        </div>
+                    </div>
+
+                    <div id="lista-ipvs" class="lista-ipvs">Selecione um local.</div>
+                </section>
+
+                <section class="painel painel-distancia">
+                    <div class="cabecalho-distancia">
+                        <div>
+                            <h2>Perfil por distância</h2>
+                            <p>Variação dos indicadores conforme o afastamento do empreendimento</p>
+                        </div>
+
+                        <div class="controles-distancia">
+                            <div class="controle-distancia">
+                                <label>Indicador</label>
+                                <select id="filtro-indicador-distancia" disabled>
+                                    <option value="populacao">População</option>
+                                    <option value="renda">Renda mediana</option>
+                                    <option value="pretaparda">% população preta + parda</option>
+                                    <option value="ipvsalto">% vulnerabilidade alta / muito alta</option>
+                                    <option value="densidade">Densidade populacional</option>
+                                </select>
+                            </div>
+
+                            <div class="controle-distancia">
+                                <label>Intervalo</label>
+                                <select id="filtro-passo-faixa" disabled>
+                                    <option value="250">250 m</option>
+                                    <option value="500" selected>500 m</option>
+                                    <option value="1000">1 km</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="grafico-distancia" class="grafico-distancia">
+                        <div class="mensagem-distancia">Selecione um empreendimento.</div>
+                    </div>
+
+                    <div class="nota-distancia">
+                        Os setores são atribuídos a uma única faixa utilizando o centroide.
+                    </div>
+                </section>
+            </div>
+        </section>
+
+        <section id="tab-comparacao" class="tab-panel">
+            <div class="cabecalho-pagina comparacao-cabecalho">
+                <div>
+                    <span class="eyebrow">Análise comparativa</span>
+                    <h2>Comparação territorial</h2>
+                    <p>Compare dois empreendimentos utilizando o mesmo raio e critério territorial.</p>
+                </div>
+
+                <div id="comparacao-status">Selecione dois empreendimentos</div>
+            </div>
+
+            <div class="comparacao-filtros">
+                <div class="comparacao-local local-a">
+                    <div class="comparacao-identificador">A</div>
+
+                    <div class="comparacao-campos">
+                        <div class="campo-comparacao">
+                            <label>Parceria A</label>
+                            <select id="comparacao-parceria-a"></select>
+                        </div>
+
+                        <div class="campo-comparacao">
+                            <label>Empreendimento A</label>
+                            <select id="comparacao-local-a" disabled></select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="comparacao-separador">×</div>
+
+                <div class="comparacao-local local-b">
+                    <div class="comparacao-identificador">B</div>
+
+                    <div class="comparacao-campos">
+                        <div class="campo-comparacao">
+                            <label>Parceria B</label>
+                            <select id="comparacao-parceria-b"></select>
+                        </div>
+
+                        <div class="campo-comparacao">
+                            <label>Empreendimento B</label>
+                            <select id="comparacao-local-b" disabled></select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="comparacao-configuracao">
+                    <div class="comparacao-raio-topo">
+                        <label>Raio comum</label>
+                        <strong id="comparacao-raio-valor">1,0 km</strong>
+                    </div>
+
+                    <input
+                        id="comparacao-raio"
+                        type="range"
+                        min="100"
+                        max="5000"
+                        step="50"
+                        value="1000"
+                    >
+
+                    <div class="comparacao-escala">
+                        <span>100 m</span>
+                        <span>5 km</span>
+                    </div>
+
+                    <select id="comparacao-criterio">
+                        <option value="centroide">Centroide</option>
+                        <option value="intersecao">Interseção</option>
+                        <option value="proporcional">Área proporcional</option>
+                    </select>
+
+                    <button id="botao-comparar" type="button" disabled>Comparar</button>
+                </div>
+            </div>
+
+            <div class="comparacao-conteudo">
+                <section class="painel comparacao-painel-mapa">
+                    <div class="titulo-painel">
+                        <div>
+                            <h2>Áreas comparadas</h2>
+                            <p>Buffers e setores dos dois empreendimentos</p>
+                        </div>
+                    </div>
+
+                    <div id="map-comparacao"></div>
+
+                    <div id="legenda-comparacao" class="legenda-comparacao">
+                        <div class="comparacao-legenda-item">
+                            <span class="legenda-a"></span>
+                            <span id="legenda-nome-a">Empreendimento A</span>
+                        </div>
+
+                        <div class="comparacao-legenda-item">
+                            <span class="legenda-b"></span>
+                            <span id="legenda-nome-b">Empreendimento B</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="painel comparacao-painel-indicadores">
+                    <div class="titulo-painel">
+                        <div>
+                            <h2>Indicadores comparados</h2>
+                            <p>Diferença entre os territórios</p>
+                        </div>
+                    </div>
+
+                    <div id="tabela-comparacao" class="tabela-comparacao">
+                        <div class="comparacao-vazia">
+                            Selecione os dois empreendimentos para iniciar a comparação.
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
+<script src="./js/app.js"></script>
+<script src="./js/parcerias.js"></script>
+<script src="./js/mapa-iframe.js"></script>
+<script src="./js/comparacao.js"></script>
+<script src="./js/navegacao.js"></script>
+
+</body>
+</html>
