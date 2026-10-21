@@ -5175,138 +5175,7 @@ function inicializarSistema(
     // PERÍMETRO INDIVIDUAL
     // ========================================================
 
-    function mostrarPerimetroLocal(
-        nomeLocal,
-        featurePerimetro,
-        abrirDiretamente = false
-    ) {
-
-        atualizarLegendaTipos(
-            'local',
-            nomeLocal,
-            featurePerimetro.type ===
-                'FeatureCollection'
-                ?
-                featurePerimetro.features
-                :
-                [
-                    featurePerimetro
-                ]
-        );
-
-
-        voltarAoPerimetroAtual =
-            () =>
-                mostrarPerimetroLocal(
-                    nomeLocal,
-                    featurePerimetro
-                );
-
-
-        currentState =
-            4;
-
-
-        atualizarIndicadorCamada(
-            `Perímetro (${escaparHTML(nomeLocal)})`
-        );
-
-
-        pinsLocais.removeFrom(
-            map
-        );
-
-
-        perimetrosLayer.clearLayers();
-        itensLayer.clearLayers();
-
-
-        map.closePopup();
-
-
-        const perimetrosDoLocal =
-            featurePerimetro.type ===
-                'FeatureCollection'
-                ?
-                featurePerimetro.features
-                :
-                [
-                    featurePerimetro
-                ];
-
-
-        const itensDoLocal = {
-
-            type:
-                'FeatureCollection',
-
-            features:
-                (
-                    geojsonItens.features
-                    ||
-                    []
-                )
-                .filter(
-                    f =>
-                        perimetrosDoLocal.some(
-                            perimetro =>
-                                pertenceAoEquipamento(
-                                    f,
-                                    perimetro
-                                )
-                        )
-                )
-
-        };
-
-
-        const temItens =
-            itensDoLocal
-                .features
-                .length >
-            0;
-
-
-        const camadaPerimetro =
-            L.geoJSON(
-                featurePerimetro,
-                {
-
-                    style: {
-
-                        color:
-                            "#E65100",
-
-                        weight:
-                            3,
-
-                        fillColor:
-                            "#F57C00",
-
-                        fillOpacity:
-                            0.2,
-
-                        dashArray:
-                            "5, 5"
-
-                    }
-
-                }
-            )
-            .addTo(
-                perimetrosLayer
-            );
-
-
-        // ====================================================
-        // DIVISÕES INTERNAS
-        // ====================================================
-
-        let itensExibidos =
-            false;
-
-
-function mostrarPerimetroLocal(
+   function mostrarPerimetroLocal(
     nomeLocal,
     featurePerimetro,
     abrirDiretamente = false
@@ -5612,10 +5481,6 @@ function mostrarPerimetroLocal(
                         );
 
 
-                        // =====================================
-                        // HOVER
-                        // =====================================
-
                         layer.on(
                             'mouseover',
                             function () {
@@ -5733,10 +5598,6 @@ function mostrarPerimetroLocal(
     }
 
 
-    // ========================================================
-    // CLIQUE NO PERÍMETRO
-    // ========================================================
-
     camadaPerimetro.on(
         'click',
         function (
@@ -5800,7 +5661,6 @@ function mostrarPerimetroLocal(
     }
 
 }
-
 
     // ========================================================
     // LIMPEZA DE CAMADAS PARA SALTO DIRETO
