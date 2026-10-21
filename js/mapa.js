@@ -3698,6 +3698,9 @@ function inicializarSistema(
     const corAzul =
         "#00506E";
 
+    const corLaranjaSPP =
+        "#F08200";
+
 
     let currentState =
         0;
@@ -5303,318 +5306,414 @@ function inicializarSistema(
             false;
 
 
-        function mostrarItensLocal() {
+function mostrarPerimetroLocal(
+    nomeLocal,
+    featurePerimetro,
+    abrirDiretamente = false
+) {
 
-            if (
-                itensExibidos
-                ||
-                !temItens
-            ) {
-                return;
-            }
-
-
-            itensExibidos =
-                true;
-
-
-            currentState =
-                5;
-
-
-            map.closePopup();
+    atualizarLegendaTipos(
+        'local',
+        nomeLocal,
+        featurePerimetro.type ===
+            'FeatureCollection'
+            ?
+            featurePerimetro.features
+            :
+            [
+                featurePerimetro
+            ]
+    );
 
 
-            atualizarIndicadorCamada(
-                "Divisões Internas"
+    voltarAoPerimetroAtual =
+        () =>
+            mostrarPerimetroLocal(
+                nomeLocal,
+                featurePerimetro
             );
 
 
-            camadaPerimetro.setStyle(
-                {
+    currentState =
+        4;
+
+
+    atualizarIndicadorCamada(
+        `Perímetro (${escaparHTML(nomeLocal)})`
+    );
+
+
+    pinsLocais.removeFrom(
+        map
+    );
+
+
+    perimetrosLayer.clearLayers();
+    itensLayer.clearLayers();
+
+
+    map.closePopup();
+
+
+    const perimetrosDoLocal =
+        featurePerimetro.type ===
+            'FeatureCollection'
+            ?
+            featurePerimetro.features
+            :
+            [
+                featurePerimetro
+            ];
+
+
+    const itensDoLocal = {
+
+        type:
+            'FeatureCollection',
+
+        features:
+            (
+                geojsonItens.features
+                ||
+                []
+            )
+            .filter(
+                f =>
+                    perimetrosDoLocal.some(
+                        perimetro =>
+                            pertenceAoEquipamento(
+                                f,
+                                perimetro
+                            )
+                    )
+            )
+
+    };
+
+
+    const temItens =
+        itensDoLocal
+            .features
+            .length >
+        0;
+
+
+    // ========================================================
+    // PERÍMETRO — LARANJA SPP
+    // ========================================================
+
+    const camadaPerimetro =
+        L.geoJSON(
+            featurePerimetro,
+            {
+
+                style: {
 
                     color:
-                        corAzul,
+                        corLaranjaSPP,
 
                     weight:
-                        4,
+                        3,
 
                     opacity:
-                        0.95,
+                        1,
+
+                    fillColor:
+                        corLaranjaSPP,
 
                     fillOpacity:
-                        0,
+                        0.16,
 
                     dashArray:
-                        null
+                        "5, 5",
+
+                    lineJoin:
+                        "round",
+
+                    lineCap:
+                        "round"
 
                 }
-            );
+
+            }
+        )
+        .addTo(
+            perimetrosLayer
+        );
 
 
-            L.geoJSON(
-                {
+    // ========================================================
+    // DIVISÕES INTERNAS
+    // ========================================================
 
-                    type:
-                        'FeatureCollection',
-
-                    features:
-                        itensDoLocal
-                            .features
-                            .flatMap(
-                                separarAreasParaExibicao
-                            )
-
-                },
-                {
-
-                    style:
-                        () => ({
-
-                            color:
-                                '#FFFFFF',
-
-                            weight:
-                                1,
-
-                            opacity:
-                                0.95,
-
-                            fillColor:
-                                '#00506E',
-
-                            fillOpacity:
-                                0.48
-
-                        }),
+    let itensExibidos =
+        false;
 
 
-                    pointToLayer:
-                        (
-                            f,
-                            latlng
-                        ) =>
-                            L.circleMarker(
-                                latlng,
-                                {
+    function mostrarItensLocal() {
 
-                                    color:
-                                        '#FFFFFF',
-
-                                    weight:
-                                        1,
-
-                                    fillColor:
-                                        '#00506E',
-
-                                    fillOpacity:
-                                        0.48,
-
-                                    radius:
-                                        7
-
-                                }
-                            ),
+        if (
+            itensExibidos
+            ||
+            !temItens
+        ) {
+            return;
+        }
 
 
-                    onEachFeature:
-                        (
-                            f,
-                            layer
-                        ) => {
-
-                            const titulo =
-                                nomeItem(
-                                    f
-                                );
+        itensExibidos =
+            true;
 
 
-                            layer.bindTooltip(
-                                `
-                                    <b>
-                                        ${escaparHTML(nomeLocal)}
-                                    </b>
+        currentState =
+            5;
 
-                                    <br>
 
-                                    ${escaparHTML(tipoItem(f))}:
-                                    ${escaparHTML(titulo)}
-                                `,
-                                {
+        map.closePopup();
 
-                                    sticky:
-                                        true,
 
-                                    className:
-                                        'tooltip-area-interna'
+        atualizarIndicadorCamada(
+            "Divisões Internas"
+        );
 
-                                }
+
+        // ====================================================
+        // BORDA DO PERÍMETRO CONTINUA LARANJA SPP
+        // ====================================================
+
+        camadaPerimetro.setStyle(
+            {
+
+                color:
+                    corLaranjaSPP,
+
+                weight:
+                    4,
+
+                opacity:
+                    1,
+
+                fillColor:
+                    corLaranjaSPP,
+
+                fillOpacity:
+                    0,
+
+                dashArray:
+                    null,
+
+                lineJoin:
+                    "round",
+
+                lineCap:
+                    "round"
+
+            }
+        );
+
+
+        L.geoJSON(
+            {
+
+                type:
+                    'FeatureCollection',
+
+                features:
+                    itensDoLocal
+                        .features
+                        .flatMap(
+                            separarAreasParaExibicao
+                        )
+
+            },
+            {
+
+                style:
+                    () => ({
+
+                        color:
+                            '#FFFFFF',
+
+                        weight:
+                            1,
+
+                        opacity:
+                            0.95,
+
+                        fillColor:
+                            corAzul,
+
+                        fillOpacity:
+                            0.48
+
+                    }),
+
+
+                pointToLayer:
+                    (
+                        f,
+                        latlng
+                    ) =>
+                        L.circleMarker(
+                            latlng,
+                            {
+
+                                color:
+                                    '#FFFFFF',
+
+                                weight:
+                                    1,
+
+                                fillColor:
+                                    corAzul,
+
+                                fillOpacity:
+                                    0.48,
+
+                                radius:
+                                    7
+
+                            }
+                        ),
+
+
+                onEachFeature:
+                    (
+                        f,
+                        layer
+                    ) => {
+
+                        const titulo =
+                            nomeItem(
+                                f
                             );
 
 
-                            layer.on(
-                                'mouseover',
-                                function () {
+                        layer.bindTooltip(
+                            `
+                                <b>
+                                    ${escaparHTML(nomeLocal)}
+                                </b>
 
-                                    if (
-                                        this.setStyle
-                                    ) {
+                                <br>
 
-                                        this.setStyle(
-                                            {
+                                ${escaparHTML(tipoItem(f))}:
+                                ${escaparHTML(titulo)}
+                            `,
+                            {
 
-                                                fillColor:
-                                                    '#F08200',
+                                sticky:
+                                    true,
 
-                                                fillOpacity:
-                                                    0.78
+                                className:
+                                    'tooltip-area-interna'
 
-                                            }
-                                        );
+                            }
+                        );
 
-                                    }
+
+                        // =====================================
+                        // HOVER
+                        // =====================================
+
+                        layer.on(
+                            'mouseover',
+                            function () {
+
+                                if (
+                                    this.setStyle
+                                ) {
+
+                                    this.setStyle(
+                                        {
+
+                                            fillColor:
+                                                corLaranjaSPP,
+
+                                            fillOpacity:
+                                                0.78
+
+                                        }
+                                    );
 
                                 }
-                            );
+
+                            }
+                        );
 
 
-                            layer.on(
-                                'mouseout',
-                                function () {
+                        layer.on(
+                            'mouseout',
+                            function () {
 
-                                    if (
-                                        this.setStyle
-                                    ) {
+                                if (
+                                    this.setStyle
+                                ) {
 
-                                        this.setStyle(
-                                            {
+                                    this.setStyle(
+                                        {
 
-                                                fillColor:
-                                                    '#00506E',
+                                            fillColor:
+                                                corAzul,
 
-                                                fillOpacity:
-                                                    0.48
+                                            fillOpacity:
+                                                0.48
 
-                                            }
-                                        );
-
-                                    }
+                                        }
+                                    );
 
                                 }
-                            );
 
-                        }
-
-                }
-            )
-            .addTo(
-                itensLayer
-            );
-
-
-            itensLayer.addTo(
-                map
-            );
-
-
-            const boundsItens =
-                L.latLngBounds(
-                    []
-                );
-
-
-            itensLayer.eachLayer(
-                camada => {
-
-                    if (
-                        camada.getBounds
-                        &&
-                        camada
-                            .getBounds()
-                            .isValid()
-                    ) {
-
-                        boundsItens.extend(
-                            camada.getBounds()
+                            }
                         );
 
                     }
 
-                }
-            );
-
-
-            if (
-                boundsItens.isValid()
-            ) {
-
-                map.fitBounds(
-                    boundsItens,
-                    {
-
-                        padding:
-                            [
-                                30,
-                                30
-                            ],
-
-                        maxZoom:
-                            20
-
-                    }
-                );
-
             }
-
-        }
-
-
-        camadaPerimetro.on(
-            'click',
-            function (
-                e
-            ) {
-
-                L.DomEvent.stopPropagation(
-                    e
-                );
-
-
-                avisarLocalSelecionado(
-                    nomeLocal,
-                    featurePerimetro,
-                    'perimetro'
-                );
-
-
-                mostrarItensLocal();
-
-            }
+        )
+        .addTo(
+            itensLayer
         );
 
 
-        perimetrosLayer.addTo(
+        itensLayer.addTo(
             map
         );
 
 
-        boundsLocalAtual =
-            camadaPerimetro.getBounds();
+        const boundsItens =
+            L.latLngBounds(
+                []
+            );
+
+
+        itensLayer.eachLayer(
+            camada => {
+
+                if (
+                    camada.getBounds
+                    &&
+                    camada
+                        .getBounds()
+                        .isValid()
+                ) {
+
+                    boundsItens.extend(
+                        camada.getBounds()
+                    );
+
+                }
+
+            }
+        );
 
 
         if (
-            abrirDiretamente
-            &&
-            temItens
+            boundsItens.isValid()
         ) {
 
-            mostrarItensLocal();
-
-        }
-        else {
-
             map.fitBounds(
-                boundsLocalAtual,
+                boundsItens,
                 {
 
                     padding:
@@ -5624,7 +5723,7 @@ function inicializarSistema(
                         ],
 
                     maxZoom:
-                        16
+                        20
 
                 }
             );
@@ -5632,6 +5731,75 @@ function inicializarSistema(
         }
 
     }
+
+
+    // ========================================================
+    // CLIQUE NO PERÍMETRO
+    // ========================================================
+
+    camadaPerimetro.on(
+        'click',
+        function (
+            e
+        ) {
+
+            L.DomEvent.stopPropagation(
+                e
+            );
+
+
+            avisarLocalSelecionado(
+                nomeLocal,
+                featurePerimetro,
+                'perimetro'
+            );
+
+
+            mostrarItensLocal();
+
+        }
+    );
+
+
+    perimetrosLayer.addTo(
+        map
+    );
+
+
+    boundsLocalAtual =
+        camadaPerimetro.getBounds();
+
+
+    if (
+        abrirDiretamente
+        &&
+        temItens
+    ) {
+
+        mostrarItensLocal();
+
+    }
+    else {
+
+        map.fitBounds(
+            boundsLocalAtual,
+            {
+
+                padding:
+                    [
+                        30,
+                        30
+                    ],
+
+                maxZoom:
+                    16
+
+            }
+        );
+
+    }
+
+}
 
 
     // ========================================================
@@ -5893,7 +6061,7 @@ function inicializarSistema(
     // NÍVEL PERÍMETRO DIRETO
     // ========================================================
 
-    function mostrarPerimetrosFiltradosDireto(
+   function mostrarPerimetrosFiltradosDireto(
     features
 ) {
 
@@ -5921,7 +6089,8 @@ function inicializarSistema(
 
 
     atualizarIndicadorCamada(
-        features.length === 1
+        features.length ===
+            1
             ?
             "Perímetro"
             :
@@ -5932,18 +6101,24 @@ function inicializarSistema(
     const camada =
         L.geoJSON(
             {
+
                 type:
                     "FeatureCollection",
 
                 features
+
             },
             {
+
+                // =================================================
+                // PERÍMETRO — LARANJA SPP
+                // =================================================
 
                 style:
                     () => ({
 
                         color:
-                            "#E65100",
+                            corLaranjaSPP,
 
                         weight:
                             3,
@@ -5952,10 +6127,10 @@ function inicializarSistema(
                             1,
 
                         fillColor:
-                            "#F57C00",
+                            corLaranjaSPP,
 
                         fillOpacity:
-                            0.18,
+                            0.16,
 
                         lineJoin:
                             "round",
@@ -5980,11 +6155,16 @@ function inicializarSistema(
                             "Equipamento";
 
 
+                        // =========================================
+                        // TOOLTIP
+                        // =========================================
+
                         layer.bindTooltip(
                             escaparHTML(
                                 nome
                             ),
                             {
+
                                 sticky:
                                     true,
 
@@ -5993,13 +6173,20 @@ function inicializarSistema(
 
                                 className:
                                     "tooltip-hover-local"
+
                             }
                         );
 
 
-                        // =====================================
+                        // =========================================
                         // HOVER
-                        // =====================================
+                        // =========================================
+                        //
+                        // A cor não muda.
+                        // Continua sendo o laranja oficial SPP.
+                        // O destaque ocorre pela espessura e
+                        // transparência.
+                        // =========================================
 
                         layer.on(
                             "mouseover",
@@ -6009,30 +6196,39 @@ function inicializarSistema(
                                     {
 
                                         color:
-                                            "#BF360C",
+                                            corLaranjaSPP,
 
                                         weight:
-                                            4,
+                                            4.5,
 
                                         opacity:
                                             1,
 
                                         fillColor:
-                                            "#EF6C00",
+                                            corLaranjaSPP,
 
                                         fillOpacity:
-                                            0.28
+                                            0.30
 
                                     }
                                 );
+
+
+                                if (
+                                    this.bringToFront
+                                ) {
+
+                                    this.bringToFront();
+
+                                }
 
                             }
                         );
 
 
-                        // =====================================
-                        // VOLTAR AO ESTILO NORMAL
-                        // =====================================
+                        // =========================================
+                        // MOUSEOUT
+                        // =========================================
 
                         layer.on(
                             "mouseout",
@@ -6042,7 +6238,7 @@ function inicializarSistema(
                                     {
 
                                         color:
-                                            "#E65100",
+                                            corLaranjaSPP,
 
                                         weight:
                                             3,
@@ -6051,10 +6247,10 @@ function inicializarSistema(
                                             1,
 
                                         fillColor:
-                                            "#F57C00",
+                                            corLaranjaSPP,
 
                                         fillOpacity:
-                                            0.18
+                                            0.16
 
                                     }
                                 );
@@ -6063,9 +6259,9 @@ function inicializarSistema(
                         );
 
 
-                        // =====================================
-                        // ABRIR EQUIPAMENTO
-                        // =====================================
+                        // =========================================
+                        // CLIQUE
+                        // =========================================
 
                         layer.on(
                             "click",
@@ -6148,7 +6344,8 @@ function inicializarSistema(
     atualizarLegendaTipos(
         "local",
 
-        features.length === 1
+        features.length ===
+            1
             ?
             nomeEquipamento(
                 features[0]
