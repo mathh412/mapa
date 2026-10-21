@@ -1,1364 +1,6754 @@
 let regioesGeoJSON, subprefeiturasGeoJSON, distritosGeoJSON, geojsonPerimetros, geojsonItens;
 
-        // ============================================================
-        // INTEGRAÇÃO COM O DASHBOARD QUANDO O MAPA ESTÁ EM UM IFRAME
-        // ============================================================
-        // O mapa continua funcionando normalmente quando aberto sozinho.
-        // Quando estiver dentro do dashboard, as ações relevantes são
-        // enviadas para a página-pai via window.postMessage.
-        const SPP_BRIDGE_SOURCE = 'spp-mapa';
-        const SPP_BRIDGE_VERSION = '2.1.1';
-const EQUIPMENT_TYPES={
- education:{label:'CEU / Educação',color:'#2563a6',path:'M3 4h7l2 2 2-2h7v15h-7l-2 2-2-2H3z M12 6v15'},
- park:{label:'Parque',color:'#28754c',path:'M12 3 5 12h3l-4 5h16l-4-5h3z M12 17v5'},
- terminal:{label:'Terminal',color:'#6850a1',path:'M6 19v3m12-3v3M5 4q7-3 14 0v15H5z M5 11h14 M8 15h1m6 0h1'},
- market:{label:'Mercado',color:'#a76517',path:'M3 9h18l-2 12H5z M7 9l5-7 5 7 M9 13v5m6-5v5'},
- sport:{label:'Esporte',color:'#b74c27',path:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M3 12h18 M12 3v18 M6 5q12 7 0 14 M18 5q-12 7 0 14'},
- cemetery:{label:'Cemitério',color:'#626975',path:'M6 20V9a6 6 0 0 1 12 0v11 M3 21h18 M9 11h6 M9 15h6'},
- events:{label:'Espaço de eventos',color:'#ab4481',path:'M3 4h18v17H3z M3 4l6 7-6 6 M21 4l-6 7 6 6 M8 21v-4h8v4'},
- publicspace:{label:'Espaço de convivência',color:'#167b80',path:'M4 7h16v7H4z M3 17h18 M6 14v7m12-7v7 M8 7v7m8-7v7'},
- housing:{label:'Habitação',color:'#926844',path:'M4 21V4h16v17z M8 8h1m6 0h1M8 12h1m6 0h1M10 21v-5h4v5'},
- unknown:{label:'Tipo não informado',color:'#667783',path:'M4 21V4h16v17z M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4 M12 17h.01'}
+// ============================================================
+// INTEGRAÇÃO COM O DASHBOARD QUANDO O MAPA ESTÁ EM UM IFRAME
+// ============================================================
+
+const SPP_BRIDGE_SOURCE = 'spp-mapa';
+const SPP_BRIDGE_VERSION = '2.1.1';
+
+const EQUIPMENT_TYPES = {
+    education: {
+        label: 'CEU / Educação',
+        color: '#2563a6',
+        path: 'M3 4h7l2 2 2-2h7v15h-7l-2 2-2-2H3z M12 6v15'
+    },
+
+    park: {
+        label: 'Parque',
+        color: '#28754c',
+        path: 'M12 3 5 12h3l-4 5h16l-4-5h3z M12 17v5'
+    },
+
+    terminal: {
+        label: 'Terminal',
+        color: '#6850a1',
+        path: 'M6 19v3m12-3v3M5 4q7-3 14 0v15H5z M5 11h14 M8 15h1m6 0h1'
+    },
+
+    market: {
+        label: 'Mercado',
+        color: '#a76517',
+        path: 'M3 9h18l-2 12H5z M7 9l5-7 5 7 M9 13v5m6-5v5'
+    },
+
+    sport: {
+        label: 'Esporte',
+        color: '#b74c27',
+        path: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M3 12h18 M12 3v18 M6 5q12 7 0 14 M18 5q-12 7 0 14'
+    },
+
+    cemetery: {
+        label: 'Cemitério',
+        color: '#626975',
+        path: 'M6 20V9a6 6 0 0 1 12 0v11 M3 21h18 M9 11h6 M9 15h6'
+    },
+
+    events: {
+        label: 'Espaço de eventos',
+        color: '#ab4481',
+        path: 'M3 4h18v17H3z M3 4l6 7-6 6 M21 4l-6 7 6 6 M8 21v-4h8v4'
+    },
+
+    publicspace: {
+        label: 'Espaço de convivência',
+        color: '#167b80',
+        path: 'M4 7h16v7H4z M3 17h18 M6 14v7m12-7v7 M8 7v7m8-7v7'
+    },
+
+    housing: {
+        label: 'Habitação',
+        color: '#926844',
+        path: 'M4 21V4h16v17z M8 8h1m6 0h1M8 12h1m6 0h1M10 21v-5h4v5'
+    },
+
+    unknown: {
+        label: 'Tipo não informado',
+        color: '#667783',
+        path: 'M4 21V4h16v17z M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4 M12 17h.01'
+    }
 };
-const EQUIPMENT_GROUP_TYPES={ceus1:'education',ceus2:'education',parques1:'park',parques3:'park',campomarte:'park',termleste:'terminal',termnoroeste:'terminal',termsul:'terminal',mercadoskinjo:'market',mercadopaulistanokinjo:'market',mercadosantoamaro:'market',pacaembu:'sport',cemb1consolare:'cemetery',cemb2cortel:'cemetery',cemb3maya:'cemetery',cemb4velar:'cemetery',anhembi:'events',anhangabau:'publicspace',baixoantartica:'publicspace',baixolapa:'publicspace',baixopompeia:'publicspace',dompedro:'housing'};
-function equipmentType(f){const key=EQUIPMENT_GROUP_TYPES[f.group||f.properties?.__grupo||f.__grupo]||'unknown';return {key,...EQUIPMENT_TYPES[key]};}
-function equipmentIcon(f){const t=equipmentType(f);return `<span class="equipment-icon" style="--equipment-color:${t.color}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${t.path}"/></svg></span>`;}
-function equipmentLegend(rows){const counts={};for(const f of rows){const t=equipmentType(f);counts[t.key]=(counts[t.key]||0)+1;}return Object.entries(counts).sort((a,b)=>EQUIPMENT_TYPES[a[0]].label.localeCompare(EQUIPMENT_TYPES[b[0]].label)).map(([key,count])=>{const f={group:Object.keys(EQUIPMENT_GROUP_TYPES).find(g=>EQUIPMENT_GROUP_TYPES[g]===key)};return `<span class="equipment-legend-item">${equipmentIcon(f)}<span>${EQUIPMENT_TYPES[key].label}</span><b>${count}</b></span>`;}).join('')||'<span>Nenhum equipamento neste recorte.</span>';}
-
-        const SPP_ALL_GROUPS = ['anhangabau','anhembi','baixoantartica','baixolapa','baixopompeia','cemb1consolare','cemb2cortel','cemb3maya','cemb4velar','ceus1','ceus2','dompedro','mercadopaulistanokinjo','mercadosantoamaro','pacaembu','parques1','parques3','termleste','termnoroeste','termsul'];
-        const sppPlural={grupo:'grupos',local:'locais',regiao:'regioes',subprefeitura:'subprefeituras',distrito:'distritos',conjunto:'conjuntos',bloco:'blocos',estrutura:'estruturas',tipo:'tipos'};
-        const initialParams = new URLSearchParams(location.search);
-        let sppFilters = Object.fromEntries(['grupo','local','regiao','subprefeitura','distrito','conjunto','bloco','estrutura','tipo','vazio'].map(k=>[k,['regiao','subprefeitura','distrito','vazio'].includes(k)?initialParams.get(k)||'':[...initialParams.getAll(k),...initialParams.getAll(sppPlural[k])].flatMap(v=>v.split(','))]));
-        let sppMap = null, sppBasePerimetros = null, sppBaseItens = null, sppCatalog = [];
-        const sppList = value => (Array.isArray(value)?value:String(value||'').split(',')).map(normalizarTexto).filter(Boolean);
-        const sppEquals = (a,b) => normalizarTexto(a).replace(/^zona /,'')===normalizarTexto(b).replace(/^zona /,'');
-        // grupo accepts individual groups, city zones, or todos. Combinations form a union.
-        function sppGroupRegion(value){
-            const key=normalizarTexto(value).replace(/[\s_-]+/g,'');
-            return {zonasul:'Sul',sul:'Sul',zonanorte:'Norte',norte:'Norte',zonaleste:'Leste',leste:'Leste',zonaoeste:'Oeste',oeste:'Oeste',zonacentral:'Centro',zonacentro:'Centro',centro:'Centro',central:'Centro'}[key]||'';
-        }
-        function sppGroupMatches(groups,group,region){
-            return groups.includes('todos')||groups.some(value=>{
-                const zone=sppGroupRegion(value);
-                return zone?sppEquals(zone,region):value===normalizarTexto(group);
-            });
-        }
-        function sppApplyFilters(message){
-            for(const k of ['grupo','local','regiao','subprefeitura','distrito','conjunto','bloco','estrutura','tipo','vazio']){
-                if(k in message)sppFilters[k]=message[k];
-                else if(sppPlural[k] in message)sppFilters[k]=message[sppPlural[k]];
-            }
-            if(!sppBasePerimetros)return;
-            if(sppMap){sppMap.stop();sppMap.remove();sppMap=null;}
-            geojsonPerimetros={type:'FeatureCollection',features:sppBasePerimetros.slice()};
-            geojsonItens={type:'FeatureCollection',features:sppBaseItens.slice()};
-            inicializarSistema(sppList(sppFilters.bloco).length+sppList(sppFilters.conjunto).length+sppList(sppFilters.estrutura).length>0);
-        }
 
 
-        function origemPaiPreferida() {
-            try {
-                if (!document.referrer) return '*';
-                const origem = new URL(document.referrer).origin;
-                return origem && origem !== 'null' ? origem : '*';
-            } catch (_) {
-                return '*';
-            }
-        }
+const EQUIPMENT_GROUP_TYPES = {
+    ceus1: 'education',
+    ceus2: 'education',
 
-        const SPP_PARENT_ORIGIN = origemPaiPreferida();
+    parques1: 'park',
+    parques3: 'park',
+    campomarte: 'park',
 
-        function enviarAcaoParaPai(type, dados = {}) {
-            const mensagem = {
-                source: SPP_BRIDGE_SOURCE,
-                version: SPP_BRIDGE_VERSION,
-                type,
-                ...dados
-            };
+    termleste: 'terminal',
+    termnoroeste: 'terminal',
+    termsul: 'terminal',
 
-            // Dispara também um evento local, útil para testes quando o mapa
-            // estiver aberto fora de um iframe.
-            try {
-                window.dispatchEvent(new CustomEvent('spp-mapa:' + type, { detail: mensagem }));
-            } catch (_) {}
+    mercadoskinjo: 'market',
+    mercadopaulistanokinjo: 'market',
+    mercadosantoamaro: 'market',
 
-            if (!window.parent || window.parent === window) return;
+    pacaembu: 'sport',
 
-            try {
-                window.parent.postMessage(mensagem, SPP_PARENT_ORIGIN);
-            } catch (_) {
-                // Fallback para casos em que o navegador não consegue inferir
-                // a origem da página-pai (por exemplo, arquivo local em testes).
-                window.parent.postMessage(mensagem, '*');
-            }
-        }
+    cemb1consolare: 'cemetery',
+    cemb2cortel: 'cemetery',
+    cemb3maya: 'cemetery',
+    cemb4velar: 'cemetery',
 
-        function grupoDaFeature(feature) {
-            if (!feature) return '';
-            return feature.__grupo
-                || feature.properties?.grupo
-                || feature.properties?.Grupo
-                || '';
-        }
+    anhembi: 'events',
 
-        function avisarLocalSelecionado(nomeLocal, feature, origem = 'mapa') {
-            const local = nomeEquipamento(feature) || nomeLocal || '';
-            const localNormalizado = String(local).trim();
+    anhangabau: 'publicspace',
+    baixoantartica: 'publicspace',
+    baixolapa: 'publicspace',
+    baixopompeia: 'publicspace',
 
-            // Evita enviar rótulos genéricos usados em seleções múltiplas.
-            if (!localNormalizado
-                || localNormalizado === 'Local Mapeado'
-                || localNormalizado === 'Locais filtrados') return;
+    dompedro: 'housing'
+};
 
-            enviarAcaoParaPai('local-selected', {
-                local: localNormalizado,
-                grupo: grupoDaFeature(feature),
-                distrito: feature?.properties?.distrito || '',
-                origem
-            });
-        }
 
-        function atualizarFiltrosPorMensagem(mensagem) {
-            const url = new URL(window.location.href);
-            let alterou = false;
+function equipmentType(f) {
 
-            const definirLista = (chave, valor) => {
-                const lista = Array.isArray(valor)
-                    ? valor
-                    : (valor === null || valor === undefined || valor === '' ? [] : [valor]);
+    const key =
+        EQUIPMENT_GROUP_TYPES[
+            f.group
+            ||
+            f.properties?.__grupo
+            ||
+            f.__grupo
+        ]
+        ||
+        'unknown';
 
-                const texto = lista
-                    .map(v => String(v).trim())
-                    .filter(Boolean)
-                    .join(',');
+    return {
+        key,
+        ...EQUIPMENT_TYPES[key]
+    };
 
-                const atual = url.searchParams.get(chave) || '';
-                if (texto) {
-                    if (atual !== texto) {
-                        url.searchParams.set(chave, texto);
-                        alterou = true;
-                    }
-                } else if (url.searchParams.has(chave)) {
-                    url.searchParams.delete(chave);
-                    alterou = true;
+}
+
+
+function equipmentIcon(f) {
+
+    const t =
+        equipmentType(f);
+
+    return `
+        <span
+            class="equipment-icon"
+            style="--equipment-color:${t.color}"
+            aria-hidden="true"
+        >
+            <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <path d="${t.path}"/>
+            </svg>
+        </span>
+    `;
+
+}
+
+
+function equipmentLegend(rows) {
+
+    const counts = {};
+
+    for (
+        const f
+        of rows
+    ) {
+
+        const t =
+            equipmentType(f);
+
+        counts[t.key] =
+            (
+                counts[t.key]
+                ||
+                0
+            )
+            +
+            1;
+
+    }
+
+
+    return (
+        Object
+            .entries(counts)
+            .sort(
+                (
+                    a,
+                    b
+                ) =>
+                    EQUIPMENT_TYPES[
+                        a[0]
+                    ]
+                    .label
+                    .localeCompare(
+                        EQUIPMENT_TYPES[
+                            b[0]
+                        ].label
+                    )
+            )
+            .map(
+                (
+                    [
+                        key,
+                        count
+                    ]
+                ) => {
+
+                    const f = {
+                        group:
+                            Object
+                                .keys(
+                                    EQUIPMENT_GROUP_TYPES
+                                )
+                                .find(
+                                    grupo =>
+                                        EQUIPMENT_GROUP_TYPES[
+                                            grupo
+                                        ]
+                                        ===
+                                        key
+                                )
+                    };
+
+
+                    return `
+                        <span class="equipment-legend-item">
+
+                            ${equipmentIcon(f)}
+
+                            <span>
+                                ${EQUIPMENT_TYPES[key].label}
+                            </span>
+
+                            <b>
+                                ${count}
+                            </b>
+
+                        </span>
+                    `;
+
                 }
-            };
+            )
+            .join("")
+        ||
+        '<span>Nenhum equipamento neste recorte.</span>'
+    );
 
-            if ('grupo' in mensagem || 'grupos' in mensagem) {
-                definirLista('grupo', mensagem.grupos ?? mensagem.grupo);
-                url.searchParams.delete('grupos');
+}
+
+
+// ============================================================
+// FILTROS
+// ============================================================
+
+const SPP_ALL_GROUPS = [
+    'anhangabau',
+    'anhembi',
+    'baixoantartica',
+    'baixolapa',
+    'baixopompeia',
+    'cemb1consolare',
+    'cemb2cortel',
+    'cemb3maya',
+    'cemb4velar',
+    'ceus1',
+    'ceus2',
+    'dompedro',
+    'mercadopaulistanokinjo',
+    'mercadosantoamaro',
+    'pacaembu',
+    'parques1',
+    'parques3',
+    'termleste',
+    'termnoroeste',
+    'termsul'
+];
+
+
+const sppPlural = {
+    grupo: 'grupos',
+    local: 'locais',
+    regiao: 'regioes',
+    subprefeitura: 'subprefeituras',
+    distrito: 'distritos',
+    conjunto: 'conjuntos',
+    bloco: 'blocos',
+    estrutura: 'estruturas',
+    tipo: 'tipos'
+};
+
+
+const initialParams =
+    new URLSearchParams(
+        location.search
+    );
+
+
+let sppFilters =
+    Object.fromEntries(
+        [
+            'grupo',
+            'local',
+            'regiao',
+            'subprefeitura',
+            'distrito',
+            'conjunto',
+            'bloco',
+            'estrutura',
+            'tipo',
+            'vazio'
+        ]
+        .map(
+            chave => [
+                chave,
+
+                [
+                    'regiao',
+                    'subprefeitura',
+                    'distrito',
+                    'vazio'
+                ]
+                .includes(
+                    chave
+                )
+                    ?
+                    initialParams.get(
+                        chave
+                    )
+                    ||
+                    ''
+                    :
+                    [
+                        ...initialParams.getAll(
+                            chave
+                        ),
+
+                        ...initialParams.getAll(
+                            sppPlural[
+                                chave
+                            ]
+                        )
+                    ]
+                    .flatMap(
+                        valor =>
+                            valor.split(',')
+                    )
+            ]
+        )
+    );
+
+
+let sppMap =
+    null;
+
+let sppBasePerimetros =
+    null;
+
+let sppBaseItens =
+    null;
+
+let sppCatalog =
+    [];
+
+
+const sppList =
+    value =>
+        (
+            Array.isArray(
+                value
+            )
+                ?
+                value
+                :
+                String(
+                    value
+                    ||
+                    ''
+                )
+                .split(',')
+        )
+        .map(
+            normalizarTexto
+        )
+        .filter(
+            Boolean
+        );
+
+
+const sppEquals =
+    (
+        a,
+        b
+    ) =>
+        normalizarTexto(a)
+            .replace(
+                /^zona /,
+                ''
+            )
+        ===
+        normalizarTexto(b)
+            .replace(
+                /^zona /,
+                ''
+            );
+
+
+function sppGroupRegion(
+    value
+) {
+
+    const key =
+        normalizarTexto(
+            value
+        )
+        .replace(
+            /[\s_-]+/g,
+            ''
+        );
+
+
+    return {
+
+        zonasul:
+            'Sul',
+
+        sul:
+            'Sul',
+
+        zonanorte:
+            'Norte',
+
+        norte:
+            'Norte',
+
+        zonaleste:
+            'Leste',
+
+        leste:
+            'Leste',
+
+        zonaoeste:
+            'Oeste',
+
+        oeste:
+            'Oeste',
+
+        zonacentral:
+            'Centro',
+
+        zonacentro:
+            'Centro',
+
+        centro:
+            'Centro',
+
+        central:
+            'Centro'
+
+    }[
+        key
+    ]
+    ||
+    '';
+
+}
+
+
+function sppGroupMatches(
+    groups,
+    group,
+    region
+) {
+
+    return (
+        groups.includes(
+            'todos'
+        )
+        ||
+        groups.some(
+            value => {
+
+                const zone =
+                    sppGroupRegion(
+                        value
+                    );
+
+
+                return zone
+                    ?
+                    sppEquals(
+                        zone,
+                        region
+                    )
+                    :
+                    value ===
+                        normalizarTexto(
+                            group
+                        );
+
             }
+        )
+    );
 
-            if ('local' in mensagem || 'locais' in mensagem) {
-                definirLista('local', mensagem.locais ?? mensagem.local);
-                url.searchParams.delete('locais');
-            }
+}
 
-            if ('conjunto' in mensagem || 'conjuntos' in mensagem) {
-                definirLista('conjunto', mensagem.conjuntos ?? mensagem.conjunto);
-                url.searchParams.delete('conjuntos');
-            }
 
-            if ('bloco' in mensagem || 'blocos' in mensagem) {
-                definirLista('bloco', mensagem.blocos ?? mensagem.bloco);
-                url.searchParams.delete('blocos');
-            }
+function sppApplyFilters(
+    message
+) {
 
-            if ('estrutura' in mensagem || 'estruturas' in mensagem) {
-                definirLista('estrutura', mensagem.estruturas ?? mensagem.estrutura);
-                url.searchParams.delete('estruturas');
-            }
+    for (
+        const k
+        of [
+            'grupo',
+            'local',
+            'regiao',
+            'subprefeitura',
+            'distrito',
+            'conjunto',
+            'bloco',
+            'estrutura',
+            'tipo',
+            'vazio'
+        ]
+    ) {
 
-            if (alterou) window.location.replace(url.toString());
+        if (
+            k in message
+        ) {
+
+            sppFilters[k] =
+                message[k];
+
+        }
+        else if (
+            sppPlural[k]
+            in
+            message
+        ) {
+
+            sppFilters[k] =
+                message[
+                    sppPlural[
+                        k
+                    ]
+                ];
+
         }
 
-        // Permite que a página-pai também envie comandos para o iframe.
-        // O dashboard atual não depende disso para filtrar o mapa, pois já
-        // atualiza o src do iframe, mas esta ponte deixa o index preparado
-        // para integrações futuras sem precisar alterar o mapa novamente.
-        window.addEventListener('message', function(event) {
-            if (event.source !== window.parent || window.parent === window) return;
-            if (SPP_PARENT_ORIGIN !== '*' && event.origin !== SPP_PARENT_ORIGIN) return;
+    }
 
-            const mensagem = event.data;
-            if (!mensagem || mensagem.source !== 'spp-dashboard') return;
 
-            if (mensagem.type === 'ping') {
-                enviarAcaoParaPai('map-ready', {
-                    fase: 'ping',
-                    url: window.location.href
-                });
-                return;
+    if (
+        !sppBasePerimetros
+    ) {
+        return;
+    }
+
+
+    if (
+        sppMap
+    ) {
+
+        sppMap.stop();
+        sppMap.remove();
+
+        sppMap =
+            null;
+
+    }
+
+
+    geojsonPerimetros = {
+        type:
+            'FeatureCollection',
+
+        features:
+            sppBasePerimetros.slice()
+    };
+
+
+    geojsonItens = {
+        type:
+            'FeatureCollection',
+
+        features:
+            sppBaseItens.slice()
+    };
+
+
+    inicializarSistema(
+        sppList(
+            sppFilters.bloco
+        ).length
+        +
+        sppList(
+            sppFilters.conjunto
+        ).length
+        +
+        sppList(
+            sppFilters.estrutura
+        ).length
+        >
+        0
+    );
+
+}
+
+
+// ============================================================
+// BRIDGE
+// ============================================================
+
+function origemPaiPreferida() {
+
+    try {
+
+        if (
+            !document.referrer
+        ) {
+            return '*';
+        }
+
+
+        const origem =
+            new URL(
+                document.referrer
+            ).origin;
+
+
+        return (
+            origem
+            &&
+            origem !==
+                'null'
+        )
+            ?
+            origem
+            :
+            '*';
+
+    }
+    catch (_) {
+
+        return '*';
+
+    }
+
+}
+
+
+const SPP_PARENT_ORIGIN =
+    origemPaiPreferida();
+
+
+function enviarAcaoParaPai(
+    type,
+    dados = {}
+) {
+
+    const mensagem = {
+
+        source:
+            SPP_BRIDGE_SOURCE,
+
+        version:
+            SPP_BRIDGE_VERSION,
+
+        type,
+
+        ...dados
+
+    };
+
+
+    try {
+
+        window.dispatchEvent(
+            new CustomEvent(
+                'spp-mapa:' + type,
+                {
+                    detail:
+                        mensagem
+                }
+            )
+        );
+
+    }
+    catch (_) {}
+
+
+    if (
+        !window.parent
+        ||
+        window.parent ===
+            window
+    ) {
+        return;
+    }
+
+
+    try {
+
+        window.parent.postMessage(
+            mensagem,
+            SPP_PARENT_ORIGIN
+        );
+
+    }
+    catch (_) {
+
+        window.parent.postMessage(
+            mensagem,
+            '*'
+        );
+
+    }
+
+}
+
+
+function grupoDaFeature(
+    feature
+) {
+
+    if (
+        !feature
+    ) {
+        return '';
+    }
+
+
+    return (
+        feature.__grupo
+        ||
+        feature.properties?.grupo
+        ||
+        feature.properties?.Grupo
+        ||
+        ''
+    );
+
+}
+
+
+function avisarLocalSelecionado(
+    nomeLocal,
+    feature,
+    origem = 'mapa'
+) {
+
+    const local =
+        nomeEquipamento(
+            feature
+        )
+        ||
+        nomeLocal
+        ||
+        '';
+
+
+    const localNormalizado =
+        String(
+            local
+        )
+        .trim();
+
+
+    if (
+        !localNormalizado
+        ||
+        localNormalizado ===
+            'Local Mapeado'
+        ||
+        localNormalizado ===
+            'Locais filtrados'
+    ) {
+        return;
+    }
+
+
+    enviarAcaoParaPai(
+        'local-selected',
+        {
+
+            local:
+                localNormalizado,
+
+            grupo:
+                grupoDaFeature(
+                    feature
+                ),
+
+            distrito:
+                feature
+                    ?.properties
+                    ?.distrito
+                ||
+                '',
+
+            origem
+
+        }
+    );
+
+}
+
+
+window.addEventListener(
+    'message',
+    function (
+        event
+    ) {
+
+        if (
+            event.source !==
+                window.parent
+            ||
+            window.parent ===
+                window
+        ) {
+            return;
+        }
+
+
+        if (
+            SPP_PARENT_ORIGIN !==
+                '*'
+            &&
+            event.origin !==
+                SPP_PARENT_ORIGIN
+        ) {
+            return;
+        }
+
+
+        const mensagem =
+            event.data;
+
+
+        if (
+            !mensagem
+            ||
+            mensagem.source !==
+                'spp-dashboard'
+        ) {
+            return;
+        }
+
+
+        if (
+            mensagem.type ===
+            'ping'
+        ) {
+
+            enviarAcaoParaPai(
+                'map-ready',
+                {
+
+                    fase:
+                        'ping',
+
+                    url:
+                        window.location.href
+
+                }
+            );
+
+
+            return;
+
+        }
+
+
+        if (
+            mensagem.type ===
+                'set-filter'
+            ||
+            mensagem.type ===
+                'set-filters'
+            ||
+            mensagem.type ===
+                'focus-local'
+        ) {
+
+            sppApplyFilters(
+                mensagem
+            );
+
+
+            return;
+
+        }
+
+
+        if (
+            mensagem.type ===
+                'clear-filter'
+            ||
+            mensagem.type ===
+                'clear-filters'
+        ) {
+
+            sppApplyFilters(
+                {
+
+                    tipo:
+                        [],
+
+                    regiao:
+                        "",
+
+                    subprefeitura:
+                        "",
+
+                    distrito:
+                        "",
+
+                    vazio:
+                        false,
+
+                    grupo:
+                        mensagem.manterGrupo
+                            ?
+                            sppFilters.grupo
+                            :
+                            [],
+
+                    local:
+                        [],
+
+                    conjunto:
+                        [],
+
+                    bloco:
+                        [],
+
+                    estrutura:
+                        []
+
+                }
+            );
+
+        }
+
+    }
+);
+
+
+window.SPPMapaBridge = {
+
+    version:
+        SPP_BRIDGE_VERSION,
+
+    enviar:
+        enviarAcaoParaPai,
+
+    aplicarFiltros:
+        sppApplyFilters
+
+};
+
+
+document.addEventListener(
+    'DOMContentLoaded',
+    function () {
+
+        enviarAcaoParaPai(
+            'map-ready',
+            {
+
+                fase:
+                    'dom',
+
+                url:
+                    window.location.href
+
+            }
+        );
+
+    },
+    {
+        once:
+            true
+    }
+);
+
+
+// ============================================================
+// NORMALIZAÇÃO
+// ============================================================
+
+function normalizarTexto(
+    texto
+) {
+
+    return String(
+        texto ??
+        ''
+    )
+    .normalize(
+        'NFD'
+    )
+    .replace(
+        /[\u0300-\u036f]/g,
+        ''
+    )
+    .replace(
+        /\u00A0/g,
+        ' '
+    )
+    .replace(
+        /\s+/g,
+        ' '
+    )
+    .replace(
+        /\(\s+/g,
+        '('
+    )
+    .replace(
+        /\s+\)/g,
+        ')'
+    )
+    .toLowerCase()
+    .trim();
+
+}
+
+
+// ============================================================
+// NÍVEL INICIAL CONTROLADO PELA URL
+// ============================================================
+
+function normalizarNivelURL(
+    valor
+) {
+
+    const chave =
+        normalizarTexto(
+            valor ||
+            ''
+        )
+        .replace(
+            /_/g,
+            '-'
+        )
+        .replace(
+            /\s+/g,
+            '-'
+        );
+
+
+    const aliases = {
+
+        regiao:
+            'regiao',
+
+        regioes:
+            'regiao',
+
+        subprefeitura:
+            'subprefeitura',
+
+        subprefeituras:
+            'subprefeitura',
+
+        distrito:
+            'distrito',
+
+        distritos:
+            'distrito',
+
+        local:
+            'local',
+
+        locais:
+            'local',
+
+        equipamento:
+            'local',
+
+        equipamentos:
+            'local',
+
+        perimetro:
+            'perimetro',
+
+        perimetros:
+            'perimetro',
+
+        interno:
+            'interno',
+
+        interna:
+            'interno',
+
+        'divisao-interna':
+            'interno',
+
+        'divisoes-internas':
+            'interno',
+
+        'areas-internas':
+            'interno'
+
+    };
+
+
+    return aliases[
+        chave
+    ]
+    ||
+    '';
+
+}
+
+
+// ============================================================
+// ITENS INTERNOS
+// ============================================================
+
+function normalizarFiltroItem(
+    texto
+) {
+
+    return normalizarTexto(
+        texto
+    )
+    .replace(
+        /^(bloco|blocos|conjunto|conjuntos|estrutura|estruturas)\s*[:#\-]?\s*/,
+        ''
+    )
+    .replace(
+        /[()\[\]{}]/g,
+        ' '
+    )
+    .replace(
+        /[–—]/g,
+        '-'
+    )
+    .replace(
+        /\s+/g,
+        ' '
+    )
+    .trim();
+
+}
+
+
+function itemCorrespondeFiltro(
+    feature,
+    filtro
+) {
+
+    const nomeCompleto =
+        normalizarFiltroItem(
+            nomeItem(
+                feature
+            )
+        );
+
+
+    const alvo =
+        normalizarFiltroItem(
+            filtro
+        );
+
+
+    if (
+        !alvo
+    ) {
+        return false;
+    }
+
+
+    if (
+        nomeCompleto ===
+        alvo
+    ) {
+        return true;
+    }
+
+
+    const numeroNome =
+        nomeCompleto
+            .match(
+                /^(\d+)(?=\s|$|-)/
+            )
+            ?.[1];
+
+
+    const numeroFiltro =
+        alvo
+            .match(
+                /^\d+$/
+            )
+            ?.[0];
+
+
+    if (
+        numeroFiltro
+        &&
+        numeroNome ===
+            numeroFiltro
+    ) {
+        return true;
+    }
+
+
+    const alvoSemSeparador =
+        alvo.replace(
+            /^(\d+)\s*-\s*/,
+            '$1 '
+        );
+
+
+    const nomeSemSeparador =
+        nomeCompleto.replace(
+            /^(\d+)\s*-\s*/,
+            '$1 '
+        );
+
+
+    if (
+        nomeSemSeparador ===
+        alvoSemSeparador
+    ) {
+        return true;
+    }
+
+
+    const nomeSemNumero =
+        nomeCompleto
+            .replace(
+                /^\d+\s*/,
+                ''
+            )
+            .replace(
+                /^[-:]\s*/,
+                ''
+            )
+            .trim();
+
+
+    return (
+        nomeSemNumero
+        &&
+        nomeSemNumero ===
+            alvo
+    );
+
+}
+
+
+function propriedade(
+    p,
+    nomes
+) {
+
+    for (
+        const nome
+        of nomes
+    ) {
+
+        const chave =
+            Object
+                .keys(
+                    p ||
+                    {}
+                )
+                .find(
+                    k =>
+                        normalizarTexto(
+                            k
+                        )
+                        ===
+                        normalizarTexto(
+                            nome
+                        )
+                        &&
+                        p[k] !==
+                            null
+                        &&
+                        p[k] !==
+                            undefined
+                        &&
+                        String(
+                            p[k]
+                        )
+                        .trim()
+                        !==
+                        ''
+                );
+
+
+        if (
+            chave !==
+            undefined
+        ) {
+
+            return String(
+                p[chave]
+            )
+            .trim();
+
+        }
+
+    }
+
+
+    return '';
+
+}
+
+
+function nomeEquipamento(
+    f
+) {
+
+    return propriedade(
+        f.properties,
+        [
+            'Equipamento',
+            'nm_equipamento'
+        ]
+    );
+
+}
+
+
+function tipoItem(
+    f
+) {
+
+    const p =
+        f.properties ||
+        {};
+
+
+    const declarado =
+        normalizarTexto(
+            propriedade(
+                p,
+                [
+                    'Tipo',
+                    'Tipo de item',
+                    'tipo_item',
+                    'tipo_estrutura'
+                ]
+            )
+        );
+
+
+    const tipos = {
+
+        bloco:
+            'Bloco',
+
+        blocos:
+            'Bloco',
+
+        conjunto:
+            'Conjunto',
+
+        conjuntos:
+            'Conjunto',
+
+        estrutura:
+            'Estrutura',
+
+        estruturas:
+            'Estrutura'
+
+    };
+
+
+    if (
+        tipos[
+            declarado
+        ]
+    ) {
+
+        return tipos[
+            declarado
+        ];
+
+    }
+
+
+    if (
+        f.__tipoArquivo
+        &&
+        f.__tipoArquivo !==
+            'Bloco'
+    ) {
+
+        return f.__tipoArquivo;
+
+    }
+
+
+    for (
+        const tipo
+        of [
+            'Estrutura',
+            'Conjunto',
+            'Bloco'
+        ]
+    ) {
+
+        if (
+            propriedade(
+                p,
+                [
+                    tipo,
+                    'nm_' +
+                    normalizarTexto(
+                        tipo
+                    )
+                ]
+            )
+        ) {
+
+            return tipo;
+
+        }
+
+    }
+
+
+    return (
+        f.__tipoArquivo
+        ||
+        'Estrutura'
+    );
+
+}
+
+
+function nomeItem(
+    f
+) {
+
+    const tipo =
+        tipoItem(
+            f
+        );
+
+
+    return (
+        propriedade(
+            f.properties,
+            [
+                tipo,
+                'nm_' +
+                    normalizarTexto(
+                        tipo
+                    ),
+                'Nome',
+                'name'
+            ]
+        )
+        ||
+        tipo +
+            ' sem nome'
+    );
+
+}
+
+
+function pertenceAoEquipamento(
+    item,
+    equipamento
+) {
+
+    const nome =
+        normalizarTexto(
+            nomeEquipamento(
+                item
+            )
+        );
+
+
+    return (
+        nome !==
+            ''
+        &&
+        nome ===
+            normalizarTexto(
+                nomeEquipamento(
+                    equipamento
+                )
+            )
+        &&
+        item.__grupo ===
+            equipamento.__grupo
+    );
+
+}
+
+
+function agruparPropriedades(
+    propriedades,
+    ignorarChave = () =>
+        false
+) {
+
+    const raiz =
+        new Map();
+
+
+    for (
+        const [
+            chave,
+            valor
+        ]
+        of Object.entries(
+            propriedades ||
+            {}
+        )
+    ) {
+
+        if (
+            ignorarChave(
+                chave
+            )
+            ||
+            valor ===
+                null
+            ||
+            valor ===
+                undefined
+        ) {
+            continue;
+        }
+
+
+        if (
+            typeof valor ===
+            'object'
+        ) {
+
+            if (
+                !Array.isArray(
+                    valor
+                )
+                ||
+                valor.some(
+                    item =>
+                        item !==
+                            null
+                        &&
+                        typeof item ===
+                            'object'
+                )
+            ) {
+
+                continue;
+
             }
 
-            if (mensagem.type === 'set-filter'
-                || mensagem.type === 'set-filters'
-                || mensagem.type === 'focus-local') {
-                sppApplyFilters(mensagem);
-                return;
-            }
-
-            if (mensagem.type === 'clear-filter' || mensagem.type === 'clear-filters') {
-                sppApplyFilters({
-                    tipo: [], regiao: "", subprefeitura: "", distrito: "", vazio: false,
-                    grupo: mensagem.manterGrupo ? sppFilters.grupo : [],
-                    local: [],
-                    conjunto: [],
-                    bloco: [],
-                    estrutura: []
-                });
-            }
-        });
-
-        // API simples para depuração no console e integrações externas.
-        window.SPPMapaBridge = {
-            version: SPP_BRIDGE_VERSION,
-            enviar: enviarAcaoParaPai,
-            aplicarFiltros: sppApplyFilters
-        };
-
-        document.addEventListener('DOMContentLoaded', function() {
-            enviarAcaoParaPai('map-ready', {
-                fase: 'dom',
-                url: window.location.href
-            });
-        }, { once: true });
-
-        // Os três tipos usam o mesmo vínculo direto com um equipamento.
-        function normalizarTexto(texto) {
-            return String(texto ?? '')
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .replace(/\u00A0/g, ' ')
-                .replace(/\s+/g, ' ')
-                .replace(/\(\s+/g, '(')
-                .replace(/\s+\)/g, ')')
-                .toLowerCase()
-                .trim();
         }
 
-        // Normalização específica para valores usados nos filtros da URL.
-        // Faz, por exemplo:
-        // "Conjunto 4", "4", "4 (Galerias de Águas Pluviais)"
-        // e "Galerias de Águas Pluviais" encontrarem o mesmo item.
-        function normalizarFiltroItem(texto) {
-            return normalizarTexto(texto)
-                .replace(/^(bloco|blocos|conjunto|conjuntos|estrutura|estruturas)\s*[:#\-]?\s*/, '')
-                .replace(/[()\[\]{}]/g, ' ')
-                .replace(/[–—]/g, '-')
-                .replace(/\s+/g, ' ')
-                .trim();
-        }
 
-        function itemCorrespondeFiltro(feature, filtro) {
-            const nomeCompleto = normalizarFiltroItem(nomeItem(feature));
-            const alvo = normalizarFiltroItem(filtro);
+        const somenteNome =
+            typeof valor ===
+                'string'
+            &&
+            (
+                valor.trim() ===
+                    ''
+                ||
+                normalizarTexto(
+                    valor
+                )
+                ===
+                'vazio'
+            );
 
-            if (!alvo) return false;
 
-            // 1. Nome completo.
-            if (nomeCompleto === alvo) return true;
+        const caminho =
+            chave
+                .split('-')
+                .map(
+                    parte =>
+                        parte.trim()
+                )
+                .filter(
+                    Boolean
+                );
 
-            // 2. Permite filtrar apenas pelo número:
-            // ?conjunto=4
-            // ?conjunto=8
-            const numeroNome = nomeCompleto.match(/^(\d+)(?=\s|$|-)/)?.[1];
-            const numeroFiltro = alvo.match(/^\d+$/)?.[0];
 
-            if (numeroFiltro && numeroNome === numeroFiltro) return true;
+        let filhos =
+            raiz;
 
-            // 3. Permite "Conjunto 4" ou "4 - Nome".
-            const alvoSemSeparador = alvo.replace(/^(\d+)\s*-\s*/, '$1 ');
-            const nomeSemSeparador = nomeCompleto.replace(/^(\d+)\s*-\s*/, '$1 ');
 
-            if (nomeSemSeparador === alvoSemSeparador) return true;
+        caminho.forEach(
+            (
+                nome,
+                indice
+            ) => {
 
-            // 4. Permite usar somente o texto que vem depois do número:
-            // ?conjunto=Galerias de Águas Pluviais
-            const nomeSemNumero = nomeCompleto
-                .replace(/^\d+\s*/, '')
-                .replace(/^[-:]\s*/, '')
-                .trim();
+                if (
+                    !filhos.has(
+                        nome
+                    )
+                ) {
 
-            if (nomeSemNumero && nomeSemNumero === alvo) return true;
+                    filhos.set(
+                        nome,
+                        {
 
-            return false;
-        }
+                            nome,
 
-        function propriedade(p, nomes) {
-            for (const nome of nomes) {
-                const chave = Object.keys(p || {}).find(k => normalizarTexto(k) === normalizarTexto(nome)
-                    && p[k] !== null && p[k] !== undefined && String(p[k]).trim() !== '');
-                if (chave !== undefined) return String(p[chave]).trim();
-            }
-            return '';
-        }
+                            valores:
+                                [],
 
-        function nomeEquipamento(f) {
-            return propriedade(f.properties, ['Equipamento', 'nm_equipamento']);
-        }
+                            filhos:
+                                new Map()
 
-        function tipoItem(f) {
-            const p = f.properties || {};
-            const declarado = normalizarTexto(propriedade(p, ['Tipo', 'Tipo de item', 'tipo_item', 'tipo_estrutura']));
-            const tipos = { bloco: 'Bloco', blocos: 'Bloco', conjunto: 'Conjunto', conjuntos: 'Conjunto', estrutura: 'Estrutura', estruturas: 'Estrutura' };
-            if (tipos[declarado]) return tipos[declarado];
-            // O arquivo específico define o tipo; blocos.geojson também aceita itens mistos.
-            if (f.__tipoArquivo && f.__tipoArquivo !== 'Bloco') return f.__tipoArquivo;
-            for (const tipo of ['Estrutura', 'Conjunto', 'Bloco']) {
-                if (propriedade(p, [tipo, 'nm_' + normalizarTexto(tipo)])) return tipo;
-            }
-            return f.__tipoArquivo || 'Estrutura';
-        }
+                        }
+                    );
 
-        function nomeItem(f) {
-            const tipo = tipoItem(f);
-            return propriedade(f.properties, [tipo, 'nm_' + normalizarTexto(tipo), 'Nome', 'name']) || tipo + ' sem nome';
-        }
-
-        function pertenceAoEquipamento(item, equipamento) {
-            const nome = normalizarTexto(nomeEquipamento(item));
-            return nome !== '' && nome === normalizarTexto(nomeEquipamento(equipamento))
-                && item.__grupo === equipamento.__grupo;
-        }
-
-        // Mantém valores numéricos e textos formatados, ocultando apenas campos vazios.
-        function temValorInformado(valor) {
-            return valor !== null && valor !== undefined && String(valor).trim() !== '';
-        }
-
-        // Cada hífen separa um nível. Caminhos iguais compartilham o mesmo grupo.
-        function agruparPropriedades(propriedades, ignorarChave = () => false) {
-            const raiz = new Map();
-            for (const [chave, valor] of Object.entries(propriedades || {})) {
-                if (ignorarChave(chave) || valor === null || valor === undefined) continue;
-
-                // Metadados estruturados (objetos / arrays de objetos) não devem
-                // aparecer como "[object Object]" no popup.
-                if (typeof valor === 'object') {
-                    if (!Array.isArray(valor) || valor.some(item => item !== null && typeof item === 'object')) {
-                        continue;
-                    }
                 }
 
-                // Texto vazio ou "vazio" cria o nome do campo sem exibir um valor.
-                const somenteNome = typeof valor === 'string'
-                    && (valor.trim() === '' || normalizarTexto(valor) === 'vazio');
-                const caminho = chave.split('-').map(parte => parte.trim()).filter(Boolean);
-                let filhos = raiz;
-                caminho.forEach((nome, indice) => {
-                    if (!filhos.has(nome)) filhos.set(nome, { nome, valores: [], filhos: new Map() });
-                    const no = filhos.get(nome);
-                    if (indice === caminho.length - 1 && !somenteNome) no.valores.push(valor);
-                    filhos = no.filhos;
-                });
-            }
-            return raiz;
-        }
 
-        function renderizarGrupos(grupos) {
-            if (!grupos.size) return '';
-            let html = '<ul class="arvore-detalhes">';
-            for (const no of grupos.values()) {
-                html += `<li><span class="${no.filhos.size ? 'grupo-detalhes' : 'campo-detalhes'}">${escaparHTML(no.nome)}</span>`;
-                if (no.valores.length) html += ': ' + no.valores.map(escaparHTML).join('; ');
-                html += renderizarGrupos(no.filhos) + '</li>';
-            }
-            return html + '</ul>';
-        }
+                const no =
+                    filhos.get(
+                        nome
+                    );
 
-        function escaparHTML(valor) {
-            return String(valor ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-        }
 
-        // Areas[i] descreve exclusivamente coordinates[i] do MultiPolygon.
-        // A separação ocorre só na renderização; o GeoJSON mantém o MultiPolygon.
-        function separarAreasParaExibicao(feature) {
-            const areas = feature.properties?.Areas;
-            if (feature.geometry?.type !== 'MultiPolygon' || !Array.isArray(areas)) return [feature];
-            return feature.geometry.coordinates.map((coordinates, indice) => {
-                const area = areas[indice];
-                const properties = { ...feature.properties };
-                delete properties.Areas;
-                if (area) {
-                    for (const chave of Object.keys(properties)) {
-                        if (normalizarTexto(chave).startsWith('etapas -') ||
-                            normalizarTexto(chave).startsWith('geometria - areas -')) delete properties[chave];
-                    }
-                    for (const etapa of area.etapas || []) properties['Etapas - ' + etapa] = '';
+                if (
+                    indice ===
+                        caminho.length -
+                            1
+                    &&
+                    !somenteNome
+                ) {
+
+                    no.valores.push(
+                        valor
+                    );
+
                 }
-                return { ...feature, properties,
-                    geometry: { type: 'Polygon', coordinates },
-                    __featureOrigem: feature,
-                    __nomeArea: area?.nome || 'Área ' + (indice + 1)
+
+
+                filhos =
+                    no.filhos;
+
+            }
+        );
+
+    }
+
+
+    return raiz;
+
+}
+
+
+function renderizarGrupos(
+    grupos
+) {
+
+    if (
+        !grupos.size
+    ) {
+        return '';
+    }
+
+
+    let html =
+        '<ul class="arvore-detalhes">';
+
+
+    for (
+        const no
+        of grupos.values()
+    ) {
+
+        html += `
+            <li>
+
+                <span
+                    class="${
+                        no.filhos.size
+                            ?
+                            'grupo-detalhes'
+                            :
+                            'campo-detalhes'
+                    }"
+                >
+                    ${escaparHTML(no.nome)}
+                </span>
+        `;
+
+
+        if (
+            no.valores.length
+        ) {
+
+            html +=
+                ': '
+                +
+                no.valores
+                    .map(
+                        escaparHTML
+                    )
+                    .join(
+                        '; '
+                    );
+
+        }
+
+
+        html +=
+            renderizarGrupos(
+                no.filhos
+            )
+            +
+            '</li>';
+
+    }
+
+
+    return (
+        html
+        +
+        '</ul>'
+    );
+
+}
+
+
+function escaparHTML(
+    valor
+) {
+
+    return String(
+        valor ??
+        ''
+    )
+    .replace(
+        /[&<>"']/g,
+        caractere => ({
+
+            '&':
+                '&amp;',
+
+            '<':
+                '&lt;',
+
+            '>':
+                '&gt;',
+
+            '"':
+                '&quot;',
+
+            "'":
+                '&#39;'
+
+        }[
+            caractere
+        ])
+    );
+
+}
+
+
+function separarAreasParaExibicao(
+    feature
+) {
+
+    const areas =
+        feature
+            .properties
+            ?.Areas;
+
+
+    if (
+        feature
+            .geometry
+            ?.type
+        !==
+        'MultiPolygon'
+        ||
+        !Array.isArray(
+            areas
+        )
+    ) {
+
+        return [
+            feature
+        ];
+
+    }
+
+
+    return feature
+        .geometry
+        .coordinates
+        .map(
+            (
+                coordinates,
+                indice
+            ) => {
+
+                const area =
+                    areas[
+                        indice
+                    ];
+
+
+                const properties = {
+                    ...feature.properties
                 };
-            });
-        }
 
-        function lerFiltroURL(params, ...chaves) {
-            return [...new Set(chaves.flatMap(chave => params.getAll(chave))
-                .flatMap(valor => valor.split(','))
-                .map(normalizarTexto).filter(Boolean))];
-        }
 
-        function itemAtendeFiltros(feature, filtros) {
-            const ativos = Object.values(filtros).some(nomes => nomes.length > 0);
-            if (!ativos) return true;
+                delete properties.Areas;
 
-            const nomes = filtros[normalizarTexto(tipoItem(feature))] || [];
-            return nomes.some(filtro => itemCorrespondeFiltro(feature, filtro));
-        }
 
-        // Coloração por saturação: tenta as quatro cores e revisa escolhas quando necessário.
-        function colorirVizinhos(vizinhos, quantidadeCores = 4) {
-            const cores = Array(vizinhos.length).fill(-1);
-            function resolver(restantes) {
-                if (!restantes) return true;
-                let escolhido = -1;
-                let maiorSaturacao = -1;
-                for (let i = 0; i < cores.length; i++) {
-                    if (cores[i] !== -1) continue;
-                    const saturacao = new Set([...vizinhos[i]].map(j => cores[j]).filter(c => c >= 0)).size;
-                    if (escolhido === -1 || saturacao > maiorSaturacao ||
-                        (saturacao === maiorSaturacao && vizinhos[i].size > vizinhos[escolhido].size)) {
-                        escolhido = i;
-                        maiorSaturacao = saturacao;
+                if (
+                    area
+                ) {
+
+                    for (
+                        const chave
+                        of Object.keys(
+                            properties
+                        )
+                    ) {
+
+                        if (
+                            normalizarTexto(
+                                chave
+                            )
+                            .startsWith(
+                                'etapas -'
+                            )
+                            ||
+                            normalizarTexto(
+                                chave
+                            )
+                            .startsWith(
+                                'geometria - areas -'
+                            )
+                        ) {
+
+                            delete properties[
+                                chave
+                            ];
+
+                        }
+
                     }
+
+
+                    for (
+                        const etapa
+                        of (
+                            area.etapas ||
+                            []
+                        )
+                    ) {
+
+                        properties[
+                            'Etapas - ' +
+                            etapa
+                        ] =
+                            '';
+
+                    }
+
                 }
-                const proibidas = new Set([...vizinhos[escolhido]].map(j => cores[j]));
-                const uso = Array(quantidadeCores).fill(0);
-                cores.forEach(c => { if (c >= 0) uso[c]++; });
-                const candidatas = Array.from({ length: quantidadeCores }, (_, i) => i)
-                    .filter(c => !proibidas.has(c)).sort((a, b) => uso[a] - uso[b] || a - b);
-                let tentouCorNova = false;
-                for (const cor of candidatas) {
-                    // Cores ainda não usadas são equivalentes para a busca.
-                    if (!uso[cor] && tentouCorNova) continue;
-                    if (!uso[cor]) tentouCorNova = true;
-                    cores[escolhido] = cor;
-                    if (resolver(restantes - 1)) return true;
-                    cores[escolhido] = -1;
-                }
-                return false;
+
+
+                return {
+
+                    ...feature,
+
+                    properties,
+
+                    geometry: {
+                        type:
+                            'Polygon',
+
+                        coordinates
+                    },
+
+                    __featureOrigem:
+                        feature,
+
+                    __nomeArea:
+                        area?.nome
+                        ||
+                        'Área ' +
+                        (
+                            indice +
+                            1
+                        )
+
+                };
+
             }
-            return resolver(cores.length) ? cores : null;
+        );
+
+}
+
+
+function itemAtendeFiltros(
+    feature,
+    filtros
+) {
+
+    const ativos =
+        Object
+            .values(
+                filtros
+            )
+            .some(
+                nomes =>
+                    nomes.length >
+                    0
+            );
+
+
+    if (
+        !ativos
+    ) {
+        return true;
+    }
+
+
+    const nomes =
+        filtros[
+            normalizarTexto(
+                tipoItem(
+                    feature
+                )
+            )
+        ]
+        ||
+        [];
+
+
+    return nomes.some(
+        filtro =>
+            itemCorrespondeFiltro(
+                feature,
+                filtro
+            )
+    );
+
+}
+
+
+// ============================================================
+// CARREGAMENTO DOS GEOJSON
+// ============================================================
+
+try {
+
+    const urlParams =
+        new URLSearchParams(
+            window.location.search
+        );
+
+
+    const grupos = [
+        ...new Set(
+            [
+                ...SPP_ALL_GROUPS,
+
+                ...sppList(
+                    sppFilters.grupo
+                )
+                .filter(
+                    grupo =>
+                        grupo !==
+                            'todos'
+                        &&
+                        !sppGroupRegion(
+                            grupo
+                        )
+                        &&
+                        /^[a-z0-9_-]+$/
+                            .test(
+                                grupo
+                            )
+                )
+            ]
+        )
+    ];
+
+
+    const locaisFiltrados =
+        [];
+
+
+    const filtrosItens = {
+
+        conjunto:
+            [],
+
+        bloco:
+            [],
+
+        estrutura:
+            []
+
+    };
+
+
+    const temFiltroItens =
+        Object
+            .values(
+                filtrosItens
+            )
+            .some(
+                nomes =>
+                    nomes.length >
+                    0
+            );
+
+
+    const baseUrl =
+        'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
+
+
+    const urlRegioes =
+        baseUrl +
+        'divisaoadm/regioes.geojson';
+
+
+    const urlSubprefeituras =
+        baseUrl +
+        'divisaoadm/subprefeituras.geojson';
+
+
+    const urlDistritos =
+        baseUrl +
+        'divisaoadm/distritos.geojson';
+
+
+    async function fetchSeguro(
+        url
+    ) {
+
+        if (
+            !url
+        ) {
+
+            return {
+                type:
+                    "FeatureCollection",
+
+                features:
+                    []
+            };
+
         }
+
 
         try {
-            const urlParams = new URLSearchParams(window.location.search);
-            const grupos = [...new Set([...SPP_ALL_GROUPS,...sppList(sppFilters.grupo).filter(g=>g!=='todos'&&!sppGroupRegion(g)&&/^[a-z0-9_-]+$/.test(g))])];
-            const locaisFiltrados = [];
-            const filtrosItens = {
-                conjunto: [], bloco: [], estrutura: []
+
+            const response =
+                await fetch(
+                    url
+                );
+
+
+            if (
+                !response.ok
+            ) {
+
+                return {
+                    type:
+                        "FeatureCollection",
+
+                    features:
+                        []
+                };
+
+            }
+
+
+            return await response.json();
+
+        }
+        catch (
+            err
+        ) {
+
+            return {
+                type:
+                    "FeatureCollection",
+
+                features:
+                    []
             };
-            const temFiltroItens = Object.values(filtrosItens).some(nomes => nomes.length > 0);
 
-            const baseUrl = 'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
-            const urlRegioes = baseUrl + 'divisaoadm/regioes.geojson'; 
-            const urlSubprefeituras = baseUrl + 'divisaoadm/subprefeituras.geojson';
-            const urlDistritos = baseUrl + 'divisaoadm/distritos.geojson';
-
-            async function fetchSeguro(url) {
-                if (!url) return { type: "FeatureCollection", features: [] };
-                try {
-                    const response = await fetch(url);
-                    if (!response.ok) return { type: "FeatureCollection", features: [] };
-                    return await response.json();
-                } catch (err) {
-                    return { type: "FeatureCollection", features: [] };
-                }
-            }
-
-            const promessasBase = [fetchSeguro(urlRegioes), fetchSeguro(urlSubprefeituras), fetchSeguro(urlDistritos)];
-            async function carregarGrupo(grupo, arquivo, tipo = null) {
-                const geo = await fetchSeguro(baseUrl + 'grupos/' + grupo + '/' + arquivo);
-                return { type: 'FeatureCollection', features: Array.isArray(geo?.features)
-                    ? geo.features.filter(f => f && f.type === 'Feature' && f.geometry).map(f => ({
-                        ...f, properties: f.properties || {}, __grupo: grupo, __tipoArquivo: tipo
-                    })) : [] };
-            }
-
-            const promessasPerimetros = grupos.map(g => carregarGrupo(g, 'perimetros.geojson'));
-            // Arquivos opcionais: a ausência de um tipo não impede os demais.
-            const fontesItens = [
-                { arquivo: 'blocos.geojson', tipo: 'Bloco' },
-                { arquivo: 'conjuntos.geojson', tipo: 'Conjunto' },
-                { arquivo: 'estruturas.geojson', tipo: 'Estrutura' }
-            ];
-            const promessasItens = grupos.flatMap(g => fontesItens.map(f => carregarGrupo(g, f.arquivo, f.tipo)));
-
-            Promise.all([
-                Promise.all(promessasBase),
-                Promise.all(promessasPerimetros),
-                Promise.all(promessasItens)
-            ]).then(([[reg, sub, dist], arrayPerimetros, arrayItens]) => {
-                regioesGeoJSON = reg;
-                subprefeiturasGeoJSON = sub;
-                distritosGeoJSON = dist;
-
-                let featuresPerimetros = [];
-                arrayPerimetros.forEach(geo => { if (geo && geo.features) featuresPerimetros = featuresPerimetros.concat(geo.features); });
-                
-                if (locaisFiltrados.length > 0) {
-                    featuresPerimetros = featuresPerimetros.filter(f => {
-                        const nomeEquipNormalizado = normalizarTexto(nomeEquipamento(f));
-                        return locaisFiltrados.includes(nomeEquipNormalizado);
-                    });
-                }
-
-                let featuresItens = [];
-                arrayItens.forEach(geo => { if (geo && geo.features) featuresItens = featuresItens.concat(geo.features); });
-
-                if (locaisFiltrados.length > 0) {
-                    featuresItens = featuresItens.filter(f => {
-                        const nomeEquipNormalizado = normalizarTexto(nomeEquipamento(f));
-                        return locaisFiltrados.includes(nomeEquipNormalizado);
-                    });
-                }
-                // Grupo e local restringem a seleção. Tipos diferentes são alternativas:
-                // bloco=A&conjunto=B seleciona o bloco A e o conjunto B.
-                featuresItens = featuresItens.filter(f => itemAtendeFiltros(f, filtrosItens));
-                if (temFiltroItens) {
-                    featuresPerimetros = featuresPerimetros.filter(perimetro =>
-                        featuresItens.some(item => pertenceAoEquipamento(item, perimetro)));
-                }
-                geojsonPerimetros = { type: 'FeatureCollection', features: featuresPerimetros };
-                geojsonItens = { type: 'FeatureCollection', features: featuresItens };
-                if ((temFiltroItens || locaisFiltrados.length > 0) && !featuresPerimetros.length) {
-                    document.getElementById('loading').textContent =
-                        'Nenhum local encontrado para os filtros informados. ' +
-                        'Para conjuntos, você pode usar o número (ex.: ?conjunto=4), ' +
-                        'o nome completo ou apenas o nome entre parênteses.';
-                    return;
-                }
-                
-                const loadingEl = document.getElementById('loading');
-                if (loadingEl) loadingEl.style.display = 'none';
-                
-                document.getElementById('indicador-camada').style.display = 'block';
-                inicializarSistema(temFiltroItens);
-
-                enviarAcaoParaPai('map-ready', {
-                    fase: 'dados',
-                    grupos: grupos.slice(),
-                    locais: locaisFiltrados.slice(),
-                    quantidadeLocais: geojsonPerimetros.features.length,
-                    catalogo: sppCatalog
-                });
-            }).catch(err => {
-                document.getElementById('loading').innerHTML = `<span style="color:#C62828;">Erro ao processar arquivos da nuvem:<br>${err.message}</span>`;
-            });
-
-        } catch(fatalErr) {
-            document.getElementById('loading').innerHTML = `<span style="color:#C62828;">Erro Crítico no Script:<br>${fatalErr.message}</span>`;
         }
 
-        function inicializarSistema(abrirItensFiltrados = false) {
-            
-            const dictDistritoParaSub = {
-                "água rasa": "Mooca", "alto de pinheiros": "Pinheiros", "anhanguera": "Perus", "aricanduva": "Aricanduva", 
-                "artur alvim": "Penha", "barra funda": "Lapa", "bela vista": "Sé", "belém": "Mooca", "bom retiro": "Sé", 
-                "brás": "Mooca", "brasilândia": "Freguesia do Ó", "butantã": "Butantã", "cachoeirinha": "Casa Verde", 
-                "cambuci": "Sé", "campo belo": "Santo Amaro", "campo grande": "Santo Amaro", "campo limpo": "Campo Limpo", 
-                "cangaiba": "Penha", "capão redondo": "Campo Limpo", "carrão": "Aricanduva", "casa verde": "Casa Verde", 
-                "cidade ademar": "Cidade Ademar", "cidade dutra": "Capela do Socorro", "cidade líder": "Itaquera", 
-                "cidade tiradentes": "Cidade Tiradentes", "consolação": "Sé", "cursino": "Ipiranga", "ermelino matarazzo": "Ermelino Matarazzo", 
-                "freguesia do ó": "Freguesia do Ó", "grajaú": "Capela do Socorro", "guaianases": "Guaianases", "iguatemi": "São Mateus", 
-                "ipiranga": "Ipiranga", "itaim bibi": "Pinheiros", "itaim paulista": "Itaim Paulista", "itaquera": "Itaquera", 
-                "jabaquara": "Jabaquara", "jaçanã": "Jaçanã", "jaguara": "Lapa", "jaguaré": "Lapa", "jaraguá": "Pirituba", 
-                "jardim ângela": "MBoi Mirim", "jardim helena": "São Miguel", "jardim paulista": "Pinheiros", 
-                "jardim são luís": "MBoi Mirim", "josé bonifácio": "Itaquera", "lajeado": "Guaianases", "lapa": "Lapa", 
-                "liberdade": "Sé", "limão": "Casa Verde", "mandaqui": "Santana", "marsilac": "Parelheiros", "moema": "Vila Mariana", 
-                "mooca": "Mooca", "morumbi": "Butantã", "parelheiros": "Parelheiros", "pari": "Mooca", "parque do carmo": "Itaquera", 
-                "pedreira": "Cidade Ademar", "penha": "Penha", "perdizes": "Lapa", "perus": "Perus", "pinheiros": "Pinheiros", 
-                "pirituba": "Pirituba", "ponte rasa": "Ermelino Matarazzo", "raposo tavares": "Butantã", "república": "Sé", 
-                "rio pequeno": "Butantã", "sacomã": "Ipiranga", "santa cecília": "Sé", "santana": "Santana", "santo amaro": "Santo Amaro", 
-                "são domingos": "Pirituba", "são lucas": "Vila Prudente", "são mateus": "São Mateus", "são miguel": "São Miguel", 
-                "são rafael": "São Mateus", "sapopemba": "Sapopemba", "saúde": "Vila Mariana", "sé": "Sé", "socorro": "Capela do Socorro", 
-                "tatuapé": "Mooca", "tremembé": "Jaçanã", "tucuruvi": "Santana", "vila andrade": "Campo Limpo", "vila curuçá": "Itaim Paulista", 
-                "vila formosa": "Aricanduva", "vila guilherme": "Vila Maria-Vila Guilherme", "vila jacuí": "São Miguel", "vila leopoldina": "Lapa", 
-                "vila maria": "Vila Maria-Vila Guilherme", "vila mariana": "Vila Mariana", "vila matilde": "Penha", 
-                "vila medeiros": "Vila Maria-Vila Guilherme", "vila prudente": "Vila Prudente", "vila sônia": "Butantã"
-            };
+    }
 
-            const dictSubParaRegiao = {
-                "sé": "Centro", "centro": "Centro",
-                "butantã": "Oeste", "lapa": "Oeste", "pinheiros": "Oeste",
-                "casa verde": "Norte", "cachoeirinha": "Norte", "freguesia do ó": "Norte", "brasilândia": "Norte", 
-                "jaçanã": "Norte", "tremembé": "Norte", "perus": "Norte", "anhanguera": "Norte", "pirituba": "Norte", 
-                "jaraguá": "Norte", "santana": "Norte", "tucuruvi": "Norte", "vila maria": "Norte", "vila guilherme": "Norte", 
-                "vila maria-vila guilherme": "Norte", "casa verde-cachoeirinha": "Norte", "pirituba-jaraguá": "Norte", 
-                "freguesia-brasilândia": "Norte", "jaçanã-tremembé": "Norte", "casa verde/cachoeirinha": "Norte",
-                "aricanduva": "Leste", "formosa": "Leste", "carrão": "Leste", "aricanduva-formosa-carrão": "Leste", 
-                "cidade tiradentes": "Leste", "ermelino matarazzo": "Leste", "guaianases": "Leste", "itaquera": "Leste", 
-                "itaim paulista": "Leste", "mooca": "Leste", "penha": "Leste", "são mateus": "Leste", "são miguel": "Leste", 
-                "sapopemba": "Leste", "vila prudente": "Leste",
-                "campo limpo": "Sul", "capela do socorro": "Sul", "cidade ademar": "Sul", "ipiranga": "Sul", 
-                "jabaquara": "Sul", "mboi mirim": "Sul", "parelheiros": "Sul", "santo amaro": "Sul", "vila mariana": "Sul"
-            };
 
-            // Extratores universais de nomes blindados e padronizados
-            function extrairNomeSub(feature) {
-                if (!feature || !feature.properties) return "Desconhecida";
-                let p = feature.properties;
-                let nome = p.name || p.nome || p.sp_nome || p.NOME_SUB || p.sp_name || p.Name || p.NOME || p.subprefeitura || p.SUBPREFEITURA;
-                return nome ? nome.toString().trim() : "Desconhecida";
-            }
+    async function carregarGrupo(
+        grupo,
+        arquivo,
+        tipo = null
+    ) {
 
-            function extrairNomeDistrito(feature) {
-                if (!feature || !feature.properties) return "Desconhecido";
-                let p = feature.properties;
-                let nome = p.nm_distrito_municipal || p.ds_nome || p.nome || p.name || p.NOME || p.distrito || p.DISTRITO;
-                return nome ? nome.toString().trim() : "Desconhecido";
-            }
-            
-            function extrairNomeRegiao(feature) {
-                if (!feature || !feature.properties) return "Desconhecida";
-                let p = feature.properties;
-                
-                // Força um filtro inteligente para retornar exatemente as 5 chaves maestras que batem com as contagens numéricas
-                const regioesValidas = ['centro', 'norte', 'sul', 'leste', 'oeste'];
-                
-                // Tenta propriedades comuns
-                let nomeRaw = p.Regiao || p.regiao || p.nome || p.name || p.nm_regiao || p.Name || p.NOME || p.REGIAO;
-                if (nomeRaw) {
-                    let nLow = nomeRaw.toString().toLowerCase();
-                    for (let r of regioesValidas) {
-                        if (nLow.includes(r)) return r.charAt(0).toUpperCase() + r.slice(1);
-                    }
-                }
-                
-                // Varredura profunda se a propriedade não for óbvia
-                for (let key in p) {
-                    let val = p[key];
-                    if (typeof val === 'string') {
-                        let vLow = val.toLowerCase();
-                        for (let r of regioesValidas) {
-                            if (vLow.includes(r) || vLow === r) {
-                                return r.charAt(0).toUpperCase() + r.slice(1);
-                            }
+        const geo =
+            await fetchSeguro(
+                baseUrl
+                +
+                'grupos/'
+                +
+                grupo
+                +
+                '/'
+                +
+                arquivo
+            );
+
+
+        return {
+
+            type:
+                'FeatureCollection',
+
+            features:
+                Array.isArray(
+                    geo?.features
+                )
+                    ?
+                    geo.features
+                        .filter(
+                            feature =>
+                                feature
+                                &&
+                                feature.type ===
+                                    'Feature'
+                                &&
+                                feature.geometry
+                        )
+                        .map(
+                            feature => ({
+
+                                ...feature,
+
+                                properties:
+                                    feature.properties
+                                    ||
+                                    {},
+
+                                __grupo:
+                                    grupo,
+
+                                __tipoArquivo:
+                                    tipo
+
+                            })
+                        )
+                    :
+                    []
+
+        };
+
+    }
+
+
+    const promessasBase = [
+
+        fetchSeguro(
+            urlRegioes
+        ),
+
+        fetchSeguro(
+            urlSubprefeituras
+        ),
+
+        fetchSeguro(
+            urlDistritos
+        )
+
+    ];
+
+
+    const promessasPerimetros =
+        grupos.map(
+            grupo =>
+                carregarGrupo(
+                    grupo,
+                    'perimetros.geojson'
+                )
+        );
+
+
+    const fontesItens = [
+
+        {
+            arquivo:
+                'blocos.geojson',
+
+            tipo:
+                'Bloco'
+        },
+
+        {
+            arquivo:
+                'conjuntos.geojson',
+
+            tipo:
+                'Conjunto'
+        },
+
+        {
+            arquivo:
+                'estruturas.geojson',
+
+            tipo:
+                'Estrutura'
+        }
+
+    ];
+
+
+    const promessasItens =
+        grupos.flatMap(
+            grupo =>
+                fontesItens.map(
+                    fonte =>
+                        carregarGrupo(
+                            grupo,
+                            fonte.arquivo,
+                            fonte.tipo
+                        )
+                )
+        );
+
+
+    Promise
+        .all(
+            [
+
+                Promise.all(
+                    promessasBase
+                ),
+
+                Promise.all(
+                    promessasPerimetros
+                ),
+
+                Promise.all(
+                    promessasItens
+                )
+
+            ]
+        )
+        .then(
+            (
+                [
+                    [
+                        reg,
+                        sub,
+                        dist
+                    ],
+
+                    arrayPerimetros,
+
+                    arrayItens
+                ]
+            ) => {
+
+                regioesGeoJSON =
+                    reg;
+
+
+                subprefeiturasGeoJSON =
+                    sub;
+
+
+                distritosGeoJSON =
+                    dist;
+
+
+                let featuresPerimetros =
+                    [];
+
+
+                arrayPerimetros.forEach(
+                    geo => {
+
+                        if (
+                            geo
+                            &&
+                            geo.features
+                        ) {
+
+                            featuresPerimetros =
+                                featuresPerimetros.concat(
+                                    geo.features
+                                );
+
                         }
+
                     }
+                );
+
+
+                if (
+                    locaisFiltrados.length >
+                    0
+                ) {
+
+                    featuresPerimetros =
+                        featuresPerimetros.filter(
+                            feature => {
+
+                                const nome =
+                                    normalizarTexto(
+                                        nomeEquipamento(
+                                            feature
+                                        )
+                                    );
+
+
+                                return locaisFiltrados.includes(
+                                    nome
+                                );
+
+                            }
+                        );
+
                 }
-                return "Desconhecida";
-            }
 
-            function buscarSubprefeitura(nomeDistrito) {
-                if (!nomeDistrito) return undefined;
-                return dictDistritoParaSub[nomeDistrito.toLowerCase().trim()];
-            }
 
-            function buscarRegiao(nomeSub) {
-                if (!nomeSub) return "Desconhecida";
-                const nNorm = nomeSub.toLowerCase().trim();
-                if (dictSubParaRegiao[nNorm]) return dictSubParaRegiao[nNorm];
-                for (let key in dictSubParaRegiao) {
-                    if (nNorm.includes(key) || key.includes(nNorm)) {
-                        return dictSubParaRegiao[key];
+                let featuresItens =
+                    [];
+
+
+                arrayItens.forEach(
+                    geo => {
+
+                        if (
+                            geo
+                            &&
+                            geo.features
+                        ) {
+
+                            featuresItens =
+                                featuresItens.concat(
+                                    geo.features
+                                );
+
+                        }
+
                     }
+                );
+
+
+                featuresItens =
+                    featuresItens.filter(
+                        feature =>
+                            itemAtendeFiltros(
+                                feature,
+                                filtrosItens
+                            )
+                    );
+
+
+                if (
+                    temFiltroItens
+                ) {
+
+                    featuresPerimetros =
+                        featuresPerimetros.filter(
+                            perimetro =>
+                                featuresItens.some(
+                                    item =>
+                                        pertenceAoEquipamento(
+                                            item,
+                                            perimetro
+                                        )
+                                )
+                        );
+
                 }
-                return "Desconhecida";
+
+
+                geojsonPerimetros = {
+
+                    type:
+                        'FeatureCollection',
+
+                    features:
+                        featuresPerimetros
+
+                };
+
+
+                geojsonItens = {
+
+                    type:
+                        'FeatureCollection',
+
+                    features:
+                        featuresItens
+
+                };
+
+
+                const loadingEl =
+                    document.getElementById(
+                        'loading'
+                    );
+
+
+                if (
+                    loadingEl
+                ) {
+
+                    loadingEl.style.display =
+                        'none';
+
+                }
+
+
+                document
+                    .getElementById(
+                        'indicador-camada'
+                    )
+                    .style
+                    .display =
+                        'block';
+
+
+                inicializarSistema(
+                    temFiltroItens
+                );
+
+
+                enviarAcaoParaPai(
+                    'map-ready',
+                    {
+
+                        fase:
+                            'dados',
+
+                        grupos:
+                            grupos.slice(),
+
+                        locais:
+                            locaisFiltrados.slice(),
+
+                        quantidadeLocais:
+                            geojsonPerimetros
+                                .features
+                                .length,
+
+                        catalogo:
+                            sppCatalog
+
+                    }
+                );
+
+            }
+        )
+        .catch(
+            err => {
+
+                document
+                    .getElementById(
+                        'loading'
+                    )
+                    .innerHTML =
+                        `
+                            <span style="color:#C62828;">
+
+                                Erro ao processar arquivos da nuvem:
+                                <br>
+
+                                ${err.message}
+
+                            </span>
+                        `;
+
+            }
+        );
+
+}
+catch (
+    fatalErr
+) {
+
+    document
+        .getElementById(
+            'loading'
+        )
+        .innerHTML =
+            `
+                <span style="color:#C62828;">
+
+                    Erro Crítico no Script:
+                    <br>
+
+                    ${fatalErr.message}
+
+                </span>
+            `;
+
+}
+
+
+// ============================================================
+// SISTEMA DO MAPA
+// ============================================================
+
+function inicializarSistema(
+    abrirItensFiltrados = false
+) {
+
+    const dictDistritoParaSub = {
+
+        "água rasa":
+            "Mooca",
+
+        "alto de pinheiros":
+            "Pinheiros",
+
+        "anhanguera":
+            "Perus",
+
+        "aricanduva":
+            "Aricanduva",
+
+        "artur alvim":
+            "Penha",
+
+        "barra funda":
+            "Lapa",
+
+        "bela vista":
+            "Sé",
+
+        "belém":
+            "Mooca",
+
+        "bom retiro":
+            "Sé",
+
+        "brás":
+            "Mooca",
+
+        "brasilândia":
+            "Freguesia do Ó",
+
+        "butantã":
+            "Butantã",
+
+        "cachoeirinha":
+            "Casa Verde",
+
+        "cambuci":
+            "Sé",
+
+        "campo belo":
+            "Santo Amaro",
+
+        "campo grande":
+            "Santo Amaro",
+
+        "campo limpo":
+            "Campo Limpo",
+
+        "cangaiba":
+            "Penha",
+
+        "capão redondo":
+            "Campo Limpo",
+
+        "carrão":
+            "Aricanduva",
+
+        "casa verde":
+            "Casa Verde",
+
+        "cidade ademar":
+            "Cidade Ademar",
+
+        "cidade dutra":
+            "Capela do Socorro",
+
+        "cidade líder":
+            "Itaquera",
+
+        "cidade tiradentes":
+            "Cidade Tiradentes",
+
+        "consolação":
+            "Sé",
+
+        "cursino":
+            "Ipiranga",
+
+        "ermelino matarazzo":
+            "Ermelino Matarazzo",
+
+        "freguesia do ó":
+            "Freguesia do Ó",
+
+        "grajaú":
+            "Capela do Socorro",
+
+        "guaianases":
+            "Guaianases",
+
+        "iguatemi":
+            "São Mateus",
+
+        "ipiranga":
+            "Ipiranga",
+
+        "itaim bibi":
+            "Pinheiros",
+
+        "itaim paulista":
+            "Itaim Paulista",
+
+        "itaquera":
+            "Itaquera",
+
+        "jabaquara":
+            "Jabaquara",
+
+        "jaçanã":
+            "Jaçanã",
+
+        "jaguara":
+            "Lapa",
+
+        "jaguaré":
+            "Lapa",
+
+        "jaraguá":
+            "Pirituba",
+
+        "jardim ângela":
+            "MBoi Mirim",
+
+        "jardim helena":
+            "São Miguel",
+
+        "jardim paulista":
+            "Pinheiros",
+
+        "jardim são luís":
+            "MBoi Mirim",
+
+        "josé bonifácio":
+            "Itaquera",
+
+        "lajeado":
+            "Guaianases",
+
+        "lapa":
+            "Lapa",
+
+        "liberdade":
+            "Sé",
+
+        "limão":
+            "Casa Verde",
+
+        "mandaqui":
+            "Santana",
+
+        "marsilac":
+            "Parelheiros",
+
+        "moema":
+            "Vila Mariana",
+
+        "mooca":
+            "Mooca",
+
+        "morumbi":
+            "Butantã",
+
+        "parelheiros":
+            "Parelheiros",
+
+        "pari":
+            "Mooca",
+
+        "parque do carmo":
+            "Itaquera",
+
+        "pedreira":
+            "Cidade Ademar",
+
+        "penha":
+            "Penha",
+
+        "perdizes":
+            "Lapa",
+
+        "perus":
+            "Perus",
+
+        "pinheiros":
+            "Pinheiros",
+
+        "pirituba":
+            "Pirituba",
+
+        "ponte rasa":
+            "Ermelino Matarazzo",
+
+        "raposo tavares":
+            "Butantã",
+
+        "república":
+            "Sé",
+
+        "rio pequeno":
+            "Butantã",
+
+        "sacomã":
+            "Ipiranga",
+
+        "santa cecília":
+            "Sé",
+
+        "santana":
+            "Santana",
+
+        "santo amaro":
+            "Santo Amaro",
+
+        "são domingos":
+            "Pirituba",
+
+        "são lucas":
+            "Vila Prudente",
+
+        "são mateus":
+            "São Mateus",
+
+        "são miguel":
+            "São Miguel",
+
+        "são rafael":
+            "São Mateus",
+
+        "sapopemba":
+            "Sapopemba",
+
+        "saúde":
+            "Vila Mariana",
+
+        "sé":
+            "Sé",
+
+        "socorro":
+            "Capela do Socorro",
+
+        "tatuapé":
+            "Mooca",
+
+        "tremembé":
+            "Jaçanã",
+
+        "tucuruvi":
+            "Santana",
+
+        "vila andrade":
+            "Campo Limpo",
+
+        "vila curuçá":
+            "Itaim Paulista",
+
+        "vila formosa":
+            "Aricanduva",
+
+        "vila guilherme":
+            "Vila Maria-Vila Guilherme",
+
+        "vila jacuí":
+            "São Miguel",
+
+        "vila leopoldina":
+            "Lapa",
+
+        "vila maria":
+            "Vila Maria-Vila Guilherme",
+
+        "vila mariana":
+            "Vila Mariana",
+
+        "vila matilde":
+            "Penha",
+
+        "vila medeiros":
+            "Vila Maria-Vila Guilherme",
+
+        "vila prudente":
+            "Vila Prudente",
+
+        "vila sônia":
+            "Butantã"
+
+    };
+
+
+    const dictSubParaRegiao = {
+
+        "sé":
+            "Centro",
+
+        "centro":
+            "Centro",
+
+        "butantã":
+            "Oeste",
+
+        "lapa":
+            "Oeste",
+
+        "pinheiros":
+            "Oeste",
+
+        "casa verde":
+            "Norte",
+
+        "cachoeirinha":
+            "Norte",
+
+        "freguesia do ó":
+            "Norte",
+
+        "brasilândia":
+            "Norte",
+
+        "jaçanã":
+            "Norte",
+
+        "tremembé":
+            "Norte",
+
+        "perus":
+            "Norte",
+
+        "anhanguera":
+            "Norte",
+
+        "pirituba":
+            "Norte",
+
+        "jaraguá":
+            "Norte",
+
+        "santana":
+            "Norte",
+
+        "tucuruvi":
+            "Norte",
+
+        "vila maria":
+            "Norte",
+
+        "vila guilherme":
+            "Norte",
+
+        "vila maria-vila guilherme":
+            "Norte",
+
+        "aricanduva":
+            "Leste",
+
+        "cidade tiradentes":
+            "Leste",
+
+        "ermelino matarazzo":
+            "Leste",
+
+        "guaianases":
+            "Leste",
+
+        "itaquera":
+            "Leste",
+
+        "itaim paulista":
+            "Leste",
+
+        "mooca":
+            "Leste",
+
+        "penha":
+            "Leste",
+
+        "são mateus":
+            "Leste",
+
+        "são miguel":
+            "Leste",
+
+        "sapopemba":
+            "Leste",
+
+        "vila prudente":
+            "Leste",
+
+        "campo limpo":
+            "Sul",
+
+        "capela do socorro":
+            "Sul",
+
+        "cidade ademar":
+            "Sul",
+
+        "ipiranga":
+            "Sul",
+
+        "jabaquara":
+            "Sul",
+
+        "mboi mirim":
+            "Sul",
+
+        "parelheiros":
+            "Sul",
+
+        "santo amaro":
+            "Sul",
+
+        "vila mariana":
+            "Sul"
+
+    };
+
+
+    function extrairNomeSub(
+        feature
+    ) {
+
+        if (
+            !feature
+            ||
+            !feature.properties
+        ) {
+            return "Desconhecida";
+        }
+
+
+        const p =
+            feature.properties;
+
+
+        const nome =
+            p.name
+            ||
+            p.nome
+            ||
+            p.sp_nome
+            ||
+            p.NOME_SUB
+            ||
+            p.sp_name
+            ||
+            p.Name
+            ||
+            p.NOME
+            ||
+            p.subprefeitura
+            ||
+            p.SUBPREFEITURA;
+
+
+        return nome
+            ?
+            nome
+                .toString()
+                .trim()
+            :
+            "Desconhecida";
+
+    }
+
+
+    function extrairNomeDistrito(
+        feature
+    ) {
+
+        if (
+            !feature
+            ||
+            !feature.properties
+        ) {
+            return "Desconhecido";
+        }
+
+
+        const p =
+            feature.properties;
+
+
+        const nome =
+            p.nm_distrito_municipal
+            ||
+            p.ds_nome
+            ||
+            p.nome
+            ||
+            p.name
+            ||
+            p.NOME
+            ||
+            p.distrito
+            ||
+            p.DISTRITO;
+
+
+        return nome
+            ?
+            nome
+                .toString()
+                .trim()
+            :
+            "Desconhecido";
+
+    }
+
+
+    function extrairNomeRegiao(
+        feature
+    ) {
+
+        if (
+            !feature
+            ||
+            !feature.properties
+        ) {
+            return "Desconhecida";
+        }
+
+
+        const p =
+            feature.properties;
+
+
+        const regioesValidas = [
+            'centro',
+            'norte',
+            'sul',
+            'leste',
+            'oeste'
+        ];
+
+
+        const nomeRaw =
+            p.Regiao
+            ||
+            p.regiao
+            ||
+            p.nome
+            ||
+            p.name
+            ||
+            p.nm_regiao
+            ||
+            p.Name
+            ||
+            p.NOME
+            ||
+            p.REGIAO;
+
+
+        if (
+            nomeRaw
+        ) {
+
+            const nLow =
+                nomeRaw
+                    .toString()
+                    .toLowerCase();
+
+
+            for (
+                const r
+                of regioesValidas
+            ) {
+
+                if (
+                    nLow.includes(
+                        r
+                    )
+                ) {
+
+                    return (
+                        r.charAt(
+                            0
+                        )
+                        .toUpperCase()
+                        +
+                        r.slice(
+                            1
+                        )
+                    );
+
+                }
+
             }
 
-            // Atribuição via dicionário direto
-            if (subprefeiturasGeoJSON && subprefeiturasGeoJSON.features) {
-                subprefeiturasGeoJSON.features.forEach(f => {
-                    const nomeSub = extrairNomeSub(f);
-                    f.properties.regiao = buscarRegiao(nomeSub);
-                });
+        }
+
+
+        for (
+            const key
+            in p
+        ) {
+
+            const val =
+                p[key];
+
+
+            if (
+                typeof val ===
+                'string'
+            ) {
+
+                const vLow =
+                    val.toLowerCase();
+
+
+                for (
+                    const r
+                    of regioesValidas
+                ) {
+
+                    if (
+                        vLow.includes(
+                            r
+                        )
+                        ||
+                        vLow ===
+                            r
+                    ) {
+
+                        return (
+                            r.charAt(
+                                0
+                            )
+                            .toUpperCase()
+                            +
+                            r.slice(
+                                1
+                            )
+                        );
+
+                    }
+
+                }
+
             }
 
-            if (distritosGeoJSON && distritosGeoJSON.features) {
-                distritosGeoJSON.features.forEach(f => {
-                    const nomeDist = extrairNomeDistrito(f);
-                    f.properties.subprefeitura = buscarSubprefeitura(nomeDist);
-                });
+        }
+
+
+        return "Desconhecida";
+
+    }
+
+
+    function buscarSubprefeitura(
+        nomeDistrito
+    ) {
+
+        if (
+            !nomeDistrito
+        ) {
+            return undefined;
+        }
+
+
+        return dictDistritoParaSub[
+            nomeDistrito
+                .toLowerCase()
+                .trim()
+        ];
+
+    }
+
+
+    function buscarRegiao(
+        nomeSub
+    ) {
+
+        if (
+            !nomeSub
+        ) {
+            return "Desconhecida";
+        }
+
+
+        const nNorm =
+            nomeSub
+                .toLowerCase()
+                .trim();
+
+
+        if (
+            dictSubParaRegiao[
+                nNorm
+            ]
+        ) {
+
+            return dictSubParaRegiao[
+                nNorm
+            ];
+
+        }
+
+
+        for (
+            const key
+            in dictSubParaRegiao
+        ) {
+
+            if (
+                nNorm.includes(
+                    key
+                )
+                ||
+                key.includes(
+                    nNorm
+                )
+            ) {
+
+                return dictSubParaRegiao[
+                    key
+                ];
+
             }
 
-            if (geojsonPerimetros && geojsonPerimetros.features) {
-                geojsonPerimetros.features.forEach(local => {
-                    if (!local.properties.distrito) { 
+        }
+
+
+        return "Desconhecida";
+
+    }
+
+
+    if (
+        subprefeiturasGeoJSON
+        &&
+        subprefeiturasGeoJSON.features
+    ) {
+
+        subprefeiturasGeoJSON
+            .features
+            .forEach(
+                feature => {
+
+                    const nomeSub =
+                        extrairNomeSub(
+                            feature
+                        );
+
+
+                    feature.properties.regiao =
+                        buscarRegiao(
+                            nomeSub
+                        );
+
+                }
+            );
+
+    }
+
+
+    if (
+        distritosGeoJSON
+        &&
+        distritosGeoJSON.features
+    ) {
+
+        distritosGeoJSON
+            .features
+            .forEach(
+                feature => {
+
+                    const nomeDist =
+                        extrairNomeDistrito(
+                            feature
+                        );
+
+
+                    feature.properties.subprefeitura =
+                        buscarSubprefeitura(
+                            nomeDist
+                        );
+
+                }
+            );
+
+    }
+
+
+    if (
+        geojsonPerimetros
+        &&
+        geojsonPerimetros.features
+    ) {
+
+        geojsonPerimetros
+            .features
+            .forEach(
+                local => {
+
+                    if (
+                        !local.properties.distrito
+                    ) {
+
                         try {
-                            const centroide = turf.centroid(local);
-                            for (let f of distritosGeoJSON.features) {
-                                if (turf.booleanPointInPolygon(centroide, f)) {
-                                    local.properties.distrito = extrairNomeDistrito(f);
+
+                            const centroide =
+                                turf.centroid(
+                                    local
+                                );
+
+
+                            for (
+                                const f
+                                of distritosGeoJSON.features
+                            ) {
+
+                                if (
+                                    turf.booleanPointInPolygon(
+                                        centroide,
+                                        f
+                                    )
+                                ) {
+
+                                    local.properties.distrito =
+                                        extrairNomeDistrito(
+                                            f
+                                        );
+
+
                                     break;
+
                                 }
+
                             }
-                        } catch(e) {}
+
+                        }
+                        catch (
+                            e
+                        ) {}
+
                     }
-                });
+
+                }
+            );
+
+    }
+
+
+    if (
+        !sppBasePerimetros
+    ) {
+
+        sppBasePerimetros =
+            geojsonPerimetros
+                .features
+                .slice();
+
+
+        sppBaseItens =
+            geojsonItens
+                .features
+                .slice();
+
+
+        sppCatalog =
+            sppBasePerimetros.map(
+                f => ({
+
+                    grupo:
+                        grupoDaFeature(
+                            f
+                        ),
+
+                    local:
+                        nomeEquipamento(
+                            f
+                        ),
+
+                    distrito:
+                        f.properties.distrito
+                        ||
+                        '',
+
+                    subprefeitura:
+                        buscarSubprefeitura(
+                            f.properties.distrito
+                        )
+                        ||
+                        '',
+
+                    regiao:
+                        buscarRegiao(
+                            buscarSubprefeitura(
+                                f.properties.distrito
+                            )
+                        )
+                        ||
+                        '',
+
+                    properties:
+                        f.properties,
+
+                    geometry:
+                        f.geometry,
+
+                    center:
+                        turf
+                            .centroid(
+                                f
+                            )
+                            .geometry
+                            .coordinates
+
+                })
+            );
+
+    }
+
+
+    const wantedGroups =
+        sppList(
+            sppFilters.grupo
+        );
+
+
+    const wantedLocals =
+        sppList(
+            sppFilters.local
+        );
+
+
+    const wantedItems = {
+
+        conjunto:
+            sppList(
+                sppFilters.conjunto
+            ),
+
+        bloco:
+            sppList(
+                sppFilters.bloco
+            ),
+
+        estrutura:
+            sppList(
+                sppFilters.estrutura
+            )
+
+    };
+
+
+    const hasItems =
+        Object
+            .values(
+                wantedItems
+            )
+            .some(
+                array =>
+                    array.length
+            );
+
+
+    const nivelInicialURL =
+        normalizarNivelURL(
+            new URLSearchParams(
+                window.location.search
+            ).get(
+                'nivel'
+            )
+        );
+
+
+    abrirItensFiltrados =
+        hasItems;
+
+
+    geojsonItens.features =
+        sppBaseItens.filter(
+            f =>
+                itemAtendeFiltros(
+                    f,
+                    wantedItems
+                )
+        );
+
+
+    geojsonPerimetros.features =
+        sppBasePerimetros.filter(
+            f => {
+
+                const district =
+                    f.properties.distrito;
+
+
+                const sub =
+                    buscarSubprefeitura(
+                        district
+                    );
+
+
+                const region =
+                    buscarRegiao(
+                        sub
+                    );
+
+
+                return (
+                    !(
+                        sppFilters.vazio ===
+                            true
+                        ||
+                        sppFilters.vazio ===
+                            'true'
+                    )
+                    &&
+                    sppGroupMatches(
+                        wantedGroups,
+                        grupoDaFeature(
+                            f
+                        ),
+                        region
+                    )
+                    &&
+                    (
+                        !sppList(
+                            sppFilters.tipo
+                        ).length
+                        ||
+                        sppList(
+                            sppFilters.tipo
+                        ).some(
+                            tipo =>
+                                tipo ===
+                                    equipmentType(
+                                        f
+                                    ).key
+                                ||
+                                tipo ===
+                                    normalizarTexto(
+                                        equipmentType(
+                                            f
+                                        ).label
+                                    )
+                        )
+                    )
+                    &&
+                    (
+                        !wantedLocals.length
+                        ||
+                        wantedLocals.includes(
+                            normalizarTexto(
+                                nomeEquipamento(
+                                    f
+                                )
+                            )
+                        )
+                    )
+                    &&
+                    (
+                        !sppFilters.regiao
+                        ||
+                        sppEquals(
+                            sppFilters.regiao,
+                            region
+                        )
+                    )
+                    &&
+                    (
+                        !sppFilters.subprefeitura
+                        ||
+                        sppEquals(
+                            sppFilters.subprefeitura,
+                            sub
+                        )
+                    )
+                    &&
+                    (
+                        !sppFilters.distrito
+                        ||
+                        sppEquals(
+                            sppFilters.distrito,
+                            district
+                        )
+                    )
+                    &&
+                    (
+                        !hasItems
+                        ||
+                        geojsonItens.features.some(
+                            item =>
+                                pertenceAoEquipamento(
+                                    item,
+                                    f
+                                )
+                        )
+                    )
+                );
+
             }
-            
-                        if(!sppBasePerimetros){
-                sppBasePerimetros=geojsonPerimetros.features.slice();
-                sppBaseItens=geojsonItens.features.slice();
-                sppCatalog=sppBasePerimetros.map(f=>({grupo:grupoDaFeature(f),local:nomeEquipamento(f),distrito:f.properties.distrito||'',subprefeitura:buscarSubprefeitura(f.properties.distrito)||'',regiao:buscarRegiao(buscarSubprefeitura(f.properties.distrito))||'',properties:f.properties,geometry:f.geometry,center:turf.centroid(f).geometry.coordinates}));
-            }
-            const wantedGroups=sppList(sppFilters.grupo), wantedLocals=sppList(sppFilters.local);
-            const wantedItems={conjunto:sppList(sppFilters.conjunto),bloco:sppList(sppFilters.bloco),estrutura:sppList(sppFilters.estrutura)};
-            const hasItems=Object.values(wantedItems).some(a=>a.length);
-            abrirItensFiltrados=hasItems;
-            geojsonItens.features=sppBaseItens.filter(f=>itemAtendeFiltros(f,wantedItems));
-            geojsonPerimetros.features=sppBasePerimetros.filter(f=>{
-                const district=f.properties.distrito, sub=buscarSubprefeitura(district),region=buscarRegiao(sub);
-                return !(sppFilters.vazio===true||sppFilters.vazio==='true')&&
-                 sppGroupMatches(wantedGroups,grupoDaFeature(f),region)&&
-                 (!sppList(sppFilters.tipo).length||sppList(sppFilters.tipo).some(t=>t===equipmentType(f).key||t===normalizarTexto(equipmentType(f).label)))&&
-                 (!wantedLocals.length||wantedLocals.includes(normalizarTexto(nomeEquipamento(f))))&&
-                 (!sppFilters.regiao||sppEquals(sppFilters.regiao,region))&&
-                 (!sppFilters.subprefeitura||sppEquals(sppFilters.subprefeitura,sub))&&
-                 (!sppFilters.distrito||sppEquals(sppFilters.distrito,district))&&
-                 (!hasItems||geojsonItens.features.some(item=>pertenceAoEquipamento(item,f)));
-            });
-            geojsonItens.features=geojsonItens.features.filter(item=>geojsonPerimetros.features.some(f=>grupoDaFeature(f)===grupoDaFeature(item)&&pertenceAoEquipamento(item,f)));
+        );
 
-            const map = sppMap = L.map('map', { maxZoom: 20, zoomAnimation:false, fadeAnimation:false, markerZoomAnimation:false }).setView([-23.5505, -46.6333], 11);
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'Tiles &copy; Esri', 
-                // O fundo usa imagens até 16; os polígonos podem aproximar até 20.
-                maxNativeZoom: 16,
-                maxZoom: 20
-            }).addTo(map);
 
-            const corAzul = "#00506E";
-            
-            let currentState = 0;
-            let voltarAoPerimetroAtual = null;
-            let regiaoAtual = null, boundsRegiaoAtual = null;
-            let subprefeituraAtual = null, boundsSubprefeituraAtual = null;
-            let distritoAtual = null, boundsDistritoAtual = null;
-            let boundsLocalAtual = null;
+    geojsonItens.features =
+        geojsonItens
+            .features
+            .filter(
+                item =>
+                    geojsonPerimetros
+                        .features
+                        .some(
+                            f =>
+                                grupoDaFeature(
+                                    f
+                                )
+                                ===
+                                grupoDaFeature(
+                                    item
+                                )
+                                &&
+                                pertenceAoEquipamento(
+                                    item,
+                                    f
+                                )
+                        )
+            );
 
-            let regioesLayer;
-            let subprefeiturasLayer, distritosLayer, distritoSelecionadoLayer = L.layerGroup(); 
-            let badgesReg = L.layerGroup(), badgesSub = L.layerGroup(), badgesDist = L.layerGroup();
-            let pinsLocais = L.layerGroup(), perimetrosLayer = L.layerGroup(), itensLayer = L.layerGroup();
-            
-            let contagemRegiao = {}, contagemSub = {}, contagemDist = {};
 
-            if (geojsonPerimetros.features && geojsonPerimetros.features.length > 0) {
-                geojsonPerimetros.features.forEach(f => {
-                    const distrito = f.properties.distrito;
-                    if (distrito) {
-                        const sub = buscarSubprefeitura(distrito);
-                        if (!contagemDist[distrito]) contagemDist[distrito] = { total: 0 };
-                        contagemDist[distrito].total += 1;
-                        if (sub) {
-                            if (!contagemSub[sub]) contagemSub[sub] = { total: 0 };
-                            contagemSub[sub].total += 1;
-                            
-                            const reg = buscarRegiao(sub);
-                            if (reg !== "Desconhecida") {
-                                if (!contagemRegiao[reg]) contagemRegiao[reg] = { total: 0 };
-                                contagemRegiao[reg].total += 1;
+    const map =
+        sppMap =
+            L.map(
+                'map',
+                {
+
+                    maxZoom:
+                        20,
+
+                    zoomAnimation:
+                        false,
+
+                    fadeAnimation:
+                        false,
+
+                    markerZoomAnimation:
+                        false
+
+                }
+            )
+            .setView(
+                [
+                    -23.5505,
+                    -46.6333
+                ],
+                11
+            );
+
+
+    L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        {
+
+            attribution:
+                'Tiles &copy; Esri',
+
+            maxNativeZoom:
+                16,
+
+            maxZoom:
+                20
+
+        }
+    )
+    .addTo(
+        map
+    );
+
+
+    const corAzul =
+        "#00506E";
+
+
+    let currentState =
+        0;
+
+
+    let voltarAoPerimetroAtual =
+        null;
+
+
+    let regiaoAtual =
+        null;
+
+    let boundsRegiaoAtual =
+        null;
+
+
+    let subprefeituraAtual =
+        null;
+
+    let boundsSubprefeituraAtual =
+        null;
+
+
+    let distritoAtual =
+        null;
+
+    let boundsDistritoAtual =
+        null;
+
+
+    let boundsLocalAtual =
+        null;
+
+
+    let regioesLayer;
+
+
+    let subprefeiturasLayer;
+
+    let distritosLayer;
+
+
+    let distritoSelecionadoLayer =
+        L.layerGroup();
+
+
+    let badgesReg =
+        L.layerGroup();
+
+    let badgesSub =
+        L.layerGroup();
+
+    let badgesDist =
+        L.layerGroup();
+
+
+    let pinsLocais =
+        L.layerGroup();
+
+    let perimetrosLayer =
+        L.layerGroup();
+
+    let itensLayer =
+        L.layerGroup();
+
+
+    let contagemRegiao = {};
+
+    let contagemSub = {};
+
+    let contagemDist = {};
+
+
+    if (
+        geojsonPerimetros.features
+        &&
+        geojsonPerimetros
+            .features
+            .length >
+            0
+    ) {
+
+        geojsonPerimetros
+            .features
+            .forEach(
+                f => {
+
+                    const distrito =
+                        f.properties.distrito;
+
+
+                    if (
+                        distrito
+                    ) {
+
+                        const sub =
+                            buscarSubprefeitura(
+                                distrito
+                            );
+
+
+                        if (
+                            !contagemDist[
+                                distrito
+                            ]
+                        ) {
+
+                            contagemDist[
+                                distrito
+                            ] = {
+                                total:
+                                    0
+                            };
+
+                        }
+
+
+                        contagemDist[
+                            distrito
+                        ].total +=
+                            1;
+
+
+                        if (
+                            sub
+                        ) {
+
+                            if (
+                                !contagemSub[
+                                    sub
+                                ]
+                            ) {
+
+                                contagemSub[
+                                    sub
+                                ] = {
+                                    total:
+                                        0
+                                };
+
                             }
-                        }
-                    }
-                });
-            }
 
-            function atualizarIndicadorCamada(texto) {
-                const indicador = document.getElementById('indicador-camada');
-                if (indicador) indicador.innerHTML = `Camada Atual: <b>${texto}</b>`;
-            }
 
-            function temDadosNoLocal(stats) { return stats && stats.total > 0; }
-            
-            function estiloRegiao(feature, nivel) {
-                let nome, stats;
-                if (nivel === 'regiao') {
-                    nome = extrairNomeRegiao(feature);
-                    stats = contagemRegiao[nome];
-                } else if (nivel === 'subprefeitura') {
-                    nome = extrairNomeSub(feature);
-                    stats = contagemSub[nome];
-                } else {
-                    nome = extrairNomeDistrito(feature);
-                    stats = contagemDist[nome];
-                }
-                return temDadosNoLocal(stats) ? { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.35 } : { color: corAzul, weight: 1, fillColor: corAzul, fillOpacity: 0 };
-            }
+                            contagemSub[
+                                sub
+                            ].total +=
+                                1;
 
-            function estiloHover(feature, nivel) {
-                const base = estiloRegiao(feature, nivel);
-                return { ...base, weight: 3, fillOpacity: Math.max(base.fillOpacity, 0.15) + 0.15 };
-            }
 
-            function criarBadgeIcon(stats) {
-                return L.divIcon({ className: 'custom-icon', html: `<div class="badge-local">${stats.total || 0}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
-            }
+                            const reg =
+                                buscarRegiao(
+                                    sub
+                                );
 
-            function obterCentroInterno(feature) {
-                try {
-                    const centroDeMassa = turf.centerOfMass(feature);
-                    const centroEstaDentro = turf.booleanPointInPolygon(centroDeMassa, feature);
-                    const ponto = centroEstaDentro ? centroDeMassa : turf.pointOnFeature(feature);
-                    const [lng, lat] = ponto.geometry.coordinates;
-                    return L.latLng(lat, lng);
-                } catch (erro) {
-                    return L.geoJSON(feature).getBounds().getCenter();
-                }
-            }
 
-            function renderizarRegioes() {
-                atualizarLegendaTipos();
-                currentState = 0;
-                atualizarIndicadorCamada("Regiões");
-                
-                if (!regioesGeoJSON || !regioesGeoJSON.features || regioesGeoJSON.features.length === 0) {
-                    renderizarSubprefeituras(); 
-                    return;
-                }
+                            if (
+                                reg !==
+                                "Desconhecida"
+                            ) {
 
-                if (regioesLayer) map.removeLayer(regioesLayer);
-                if (subprefeiturasLayer) map.removeLayer(subprefeiturasLayer);
-                badgesReg.clearLayers(); badgesSub.clearLayers();
+                                if (
+                                    !contagemRegiao[
+                                        reg
+                                    ]
+                                ) {
 
-                regioesLayer = L.geoJSON(regioesGeoJSON, {
-                    style: f => estiloRegiao(f, 'regiao'),
-                    onEachFeature: function (feature, layer) {
-                        const nomeRegiao = extrairNomeRegiao(feature);
-                        const stats = contagemRegiao[nomeRegiao];
-                        layer.on('add',()=>{const el=layer.getElement();if(el){el.setAttribute('role','button');el.setAttribute('aria-label',nomeRegiao);el.setAttribute('tabindex','0');el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();layer.fire('click',{target:layer,originalEvent:e});}});}});
+                                    contagemRegiao[
+                                        reg
+                                    ] = {
+                                        total:
+                                            0
+                                    };
 
-                        layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'regiao')));
-                        layer.on('mouseout', () => regioesLayer.resetStyle(layer));
-                        
-                        // Garante que a contagem númerica da região apareça na tela
-                        if (temDadosNoLocal(stats)) {
-                            L.marker(obterCentroInterno(feature), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesReg);
-                        }
+                                }
 
-                        layer.on('click', function (e) {
-                            L.DomEvent.stopPropagation(e);
-                            if (temDadosNoLocal(stats) || true) { 
-                                regiaoAtual = nomeRegiao; 
-                                boundsRegiaoAtual = e.target.getBounds();
-                                enviarAcaoParaPai('region-selected', { regiao: nomeRegiao });
-                                map.removeLayer(regioesLayer); badgesReg.removeFrom(map);
-                                map.fitBounds(boundsRegiaoAtual); 
-                                renderizarSubprefeituras(nomeRegiao);
+
+                                contagemRegiao[
+                                    reg
+                                ].total +=
+                                    1;
+
                             }
-                        });
-                        
-                        if (nomeRegiao !== "Desconhecida") {
-                            layer.bindTooltip(nomeRegiao, { sticky: true });
+
                         }
+
                     }
-                }).addTo(map);
-                badgesReg.addTo(map);
+
+                }
+            );
+
+    }
+
+
+    function atualizarIndicadorCamada(
+        texto
+    ) {
+
+        const indicador =
+            document.getElementById(
+                'indicador-camada'
+            );
+
+
+        if (
+            indicador
+        ) {
+
+            indicador.innerHTML =
+                `Camada Atual: <b>${texto}</b>`;
+
+        }
+
+    }
+
+
+    function temDadosNoLocal(
+        stats
+    ) {
+
+        return (
+            stats
+            &&
+            stats.total >
+                0
+        );
+
+    }
+
+
+    function estiloRegiao(
+        feature,
+        nivel
+    ) {
+
+        let nome;
+
+        let stats;
+
+
+        if (
+            nivel ===
+            'regiao'
+        ) {
+
+            nome =
+                extrairNomeRegiao(
+                    feature
+                );
+
+
+            stats =
+                contagemRegiao[
+                    nome
+                ];
+
+        }
+        else if (
+            nivel ===
+            'subprefeitura'
+        ) {
+
+            nome =
+                extrairNomeSub(
+                    feature
+                );
+
+
+            stats =
+                contagemSub[
+                    nome
+                ];
+
+        }
+        else {
+
+            nome =
+                extrairNomeDistrito(
+                    feature
+                );
+
+
+            stats =
+                contagemDist[
+                    nome
+                ];
+
+        }
+
+
+        return temDadosNoLocal(
+            stats
+        )
+            ?
+            {
+
+                color:
+                    corAzul,
+
+                weight:
+                    1.5,
+
+                fillColor:
+                    corAzul,
+
+                fillOpacity:
+                    0.35
+
             }
+            :
+            {
 
-            function renderizarSubprefeituras(nomeRegiaoFiltro = null) {
-                atualizarLegendaTipos('regiao',nomeRegiaoFiltro);
-                currentState = 1;
-                atualizarIndicadorCamada(nomeRegiaoFiltro ? `Subprefeituras (${nomeRegiaoFiltro})` : "Subprefeituras");
-                
-                if (subprefeiturasLayer) map.removeLayer(subprefeiturasLayer);
-                if (distritosLayer) map.removeLayer(distritosLayer);
-                badgesSub.clearLayers(); badgesDist.clearLayers();
+                color:
+                    corAzul,
 
-                subprefeiturasLayer = L.geoJSON(subprefeiturasGeoJSON, {
-                    filter: f => {
-                        if (!nomeRegiaoFiltro) return true;
-                        const reg = f.properties.regiao; 
-                        if (!reg || reg === "Desconhecida") return false;
-                        return reg.toLowerCase().includes(nomeRegiaoFiltro.toLowerCase()) || nomeRegiaoFiltro.toLowerCase().includes(reg.toLowerCase());
-                    },
-                    style: f => estiloRegiao(f, 'subprefeitura'),
-                    onEachFeature: function (feature, layer) {
-                        const nomeSub = extrairNomeSub(feature);
-                        const stats = contagemSub[nomeSub];
-                        layer.on('add',()=>{const el=layer.getElement();if(el){el.setAttribute('role','button');el.setAttribute('aria-label',nomeSub);el.setAttribute('tabindex','0');el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();layer.fire('click',{target:layer,originalEvent:e});}});}});
+                weight:
+                    1,
 
-                        layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'subprefeitura')));
-                        layer.on('mouseout', () => subprefeiturasLayer.resetStyle(layer));
-                        
-                        if (temDadosNoLocal(stats)) L.marker(obterCentroInterno(feature), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesSub);
+                fillColor:
+                    corAzul,
 
-                        layer.on('click', function (e) {
-                            L.DomEvent.stopPropagation(e);
-                            subprefeituraAtual = nomeSub; 
-                            boundsSubprefeituraAtual = e.target.getBounds();
-                            enviarAcaoParaPai('subprefeitura-selected', {
-                                subprefeitura: nomeSub,
-                                regiao: regiaoAtual || ''
-                            });
-                            map.removeLayer(subprefeiturasLayer); badgesSub.removeFrom(map);
-                            map.fitBounds(boundsSubprefeituraAtual); 
-                            renderizarDistritos(nomeSub);
-                        });
-                        layer.bindTooltip(nomeSub, { sticky: true });
-                    }
-                }).addTo(map);
-                badgesSub.addTo(map);
+                fillOpacity:
+                    0
+
+            };
+
+    }
+
+
+    function estiloHover(
+        feature,
+        nivel
+    ) {
+
+        const base =
+            estiloRegiao(
+                feature,
+                nivel
+            );
+
+
+        return {
+
+            ...base,
+
+            weight:
+                3,
+
+            fillOpacity:
+                Math.max(
+                    base.fillOpacity,
+                    0.15
+                )
+                +
+                0.15
+
+        };
+
+    }
+
+
+    function criarBadgeIcon(
+        stats
+    ) {
+
+        return L.divIcon(
+            {
+
+                className:
+                    'custom-icon',
+
+                html:
+                    `
+                        <div class="badge-local">
+                            ${stats.total || 0}
+                        </div>
+                    `,
+
+                iconSize:
+                    [
+                        30,
+                        30
+                    ],
+
+                iconAnchor:
+                    [
+                        15,
+                        15
+                    ]
+
             }
+        );
 
-            function renderizarDistritos(nomeSubClicada) {
-                atualizarLegendaTipos('subprefeitura',nomeSubClicada);
-                currentState = 2;
-                atualizarIndicadorCamada(`Distritos (${nomeSubClicada})`);
-                
-                if (distritosLayer) map.removeLayer(distritosLayer);
-                badgesDist.clearLayers();
+    }
 
-                distritosLayer = L.geoJSON(distritosGeoJSON, {
-                    filter: f => {
-                        const subF = f.properties.subprefeitura;
-                        return subF && subF.toLowerCase() === nomeSubClicada.toLowerCase();
-                    },
-                    style: f => estiloRegiao(f, 'distrito'),
-                    onEachFeature: function (feature, layer) {
-                        const nomeDistrito = extrairNomeDistrito(feature);
-                        const stats = contagemDist[nomeDistrito];
-                        layer.on('add',()=>{const el=layer.getElement();if(el){el.setAttribute('role','button');el.setAttribute('aria-label',nomeDistrito);el.setAttribute('tabindex','0');el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();layer.fire('click',{target:layer,originalEvent:e});}});}});
 
-                        layer.on('mouseover', () => layer.setStyle(estiloHover(feature, 'distrito')));
-                        layer.on('mouseout', () => distritosLayer.resetStyle(layer));
-                        
-                        if (temDadosNoLocal(stats)) L.marker(obterCentroInterno(feature), { icon: criarBadgeIcon(stats), interactive: false }).addTo(badgesDist);
+    function obterCentroInterno(
+        feature
+    ) {
 
-                        layer.on('click', function (e) {
-                            L.DomEvent.stopPropagation(e);
-                            enviarAcaoParaPai('district-selected', {
-                                distrito: nomeDistrito,
-                                subprefeitura: nomeSubClicada || '',
-                                regiao: regiaoAtual || ''
-                            });
-                            if (temDadosNoLocal(stats)) mostrarPinsDistrito(nomeDistrito, e.target.getBounds());
-                            else map.fitBounds(e.target.getBounds());
-                        });
-                        layer.bindTooltip(nomeDistrito, { sticky: true });
-                    }
-                }).addTo(map);
-                badgesDist.addTo(map);
-            }
+        try {
 
-            function mostrarPinsDistrito(nomeDistrito, boundsDistrito) {
-                atualizarLegendaTipos('distrito',nomeDistrito);
-                currentState = 3; 
-                distritoAtual = nomeDistrito; boundsDistritoAtual = boundsDistrito;
-                atualizarIndicadorCamada(`Locais (${nomeDistrito})`);
+            const centroDeMassa =
+                turf.centerOfMass(
+                    feature
+                );
 
-                if (distritosLayer) map.removeLayer(distritosLayer); badgesDist.removeFrom(map);
-                distritoSelecionadoLayer.clearLayers(); pinsLocais.clearLayers(); perimetrosLayer.clearLayers(); itensLayer.clearLayers(); map.closePopup();
 
-                const featDistrito = distritosGeoJSON.features.find(f => extrairNomeDistrito(f) === nomeDistrito);
-                if (featDistrito) L.geoJSON(featDistrito, { style: { color: corAzul, weight: 1.5, fillColor: corAzul, fillOpacity: 0.1, dashArray: "4, 4" }, interactive: false }).addTo(distritoSelecionadoLayer);
-                distritoSelecionadoLayer.addTo(map); 
-                map.fitBounds(boundsDistrito);
+            const centroEstaDentro =
+                turf.booleanPointInPolygon(
+                    centroDeMassa,
+                    feature
+                );
 
-                const svgPin = `<svg width="24" height="36" viewBox="0 0 24 36" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.373 0 0 5.373 0 12c0 8.4 12 24 12 24s12-15.6 12-24c0-6.627-5.373-12-12-12zm0 17c-2.761 0-5-2.239-5-5s2.239-5 5-5 5 2.239 5 5-2.239 5-5 5z" fill="#00506E"/></svg>`;
-                const typeIcon=f=>L.divIcon({className:'custom-type-pin',html:equipmentIcon(f),iconSize:[32,32],iconAnchor:[16,16],tooltipAnchor:[0,-18]});
 
-                geojsonPerimetros.features.filter(f => f.properties.distrito === nomeDistrito).forEach(f => {
-                    const centroid = turf.centroid(f).geometry.coordinates;
-                    const nomeLocal = nomeEquipamento(f) || 'Local Mapeado';
-                    const marker = L.marker([centroid[1], centroid[0]], { icon: typeIcon(f), title:nomeLocal, alt:nomeLocal });
-                    marker.on('add',()=>marker.getElement()?.setAttribute('aria-label',nomeLocal));
-                    marker.bindTooltip(escaparHTML(nomeLocal), { permanent: false, direction: 'top', className: 'tooltip-hover-local' });
-                    marker.on('click', function(e) {
-                        L.DomEvent.stopPropagation(e);
-                        avisarLocalSelecionado(nomeLocal, f, 'pin');
-                        mostrarPerimetroLocal(nomeLocal, f);
-                    });
-                    marker.addTo(pinsLocais);
-                });
-                pinsLocais.addTo(map);
-            }
+            const ponto =
+                centroEstaDentro
+                    ?
+                    centroDeMassa
+                    :
+                    turf.pointOnFeature(
+                        feature
+                    );
 
-            function mostrarPerimetroLocal(nomeLocal, featurePerimetro, abrirDiretamente = false) {
-                atualizarLegendaTipos('local',nomeLocal,featurePerimetro.type==='FeatureCollection'?featurePerimetro.features:[featurePerimetro]);
-                voltarAoPerimetroAtual = () => mostrarPerimetroLocal(nomeLocal, featurePerimetro);
-                currentState = 4; 
-                atualizarIndicadorCamada(`Perímetro (${escaparHTML(nomeLocal)})`);
-                
-                pinsLocais.removeFrom(map); perimetrosLayer.clearLayers(); itensLayer.clearLayers(); map.closePopup();
 
-                const p = featurePerimetro.properties || {};
-                const tituloObra = escaparHTML(nomeEquipamento(featurePerimetro) || nomeLocal || 'Local Mapeado');
-                
-                const perimetrosDoLocal = featurePerimetro.type === 'FeatureCollection'
-                    ? featurePerimetro.features : [featurePerimetro];
-                let itensDoLocal = { type: 'FeatureCollection', features: (geojsonItens.features || [])
-                    .filter(f => perimetrosDoLocal.some(perimetro => pertenceAoEquipamento(f, perimetro))) };
-                const temItens = itensDoLocal.features.length > 0;
+            const [
+                lng,
+                lat
+            ] =
+                ponto
+                    .geometry
+                    .coordinates;
 
-                const avisoItens = temItens ? `<i style="color: #E65100; font-size: 11px;">(Clique no perímetro para visualizar os blocos, conjuntos ou estruturas)</i>` : `<i style="color: #666; font-size: 11px;">(Estruturas internas não informadas ou não vinculadas nesta base)</i>`;
 
-                let mod = p['Modalidade da Concessão'] || p.tx_modalidade_concessao;
-                let conc = p['Concessionária'] || p.nm_concessionaria;
-                let poder = p['Poder Concedente'];
-                let area = p['Área'];
-                let inv = p['Investimento'] || p.qt_investimento_real;
-                let prazo = p['Prazo da Concessão'] || p.qt_prazo_concessao;
+            return L.latLng(
+                lat,
+                lng
+            );
 
-                let listaDetalhes = '';
-                if (mod) listaDetalhes += `<b>Modalidade:</b> ${mod}<br>`;
-                if (conc) listaDetalhes += `<b>Concessionária:</b> ${conc}<br>`;
-                if (poder) listaDetalhes += `<b>Poder Concedente:</b> ${poder}<br>`;
-                
-                if (area) {
-                    const areaFormatada = Number(area).toLocaleString('pt-BR');
-                    listaDetalhes += `<b>Área:</b> ${areaFormatada} m²<br>`;
-                }
-                
-                if (inv) listaDetalhes += `<b>Investimento:</b> R$ ${Number(inv).toLocaleString('pt-BR')}<br>`;
-                if (prazo) listaDetalhes += `<b>Prazo:</b> ${prazo} anos<br>`;
-                
-                const separador = listaDetalhes !== '' ? `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;">` : ``;
+        }
+        catch (
+            erro
+        ) {
 
-                const chavesIgnoradas = ['Equipamento', 'nm_equipamento', 'distrito', 'regiao', 'subprefeitura', 'Modalidade da Concessão', 'tx_modalidade_concessao', 'Concessionária', 'nm_concessionaria', 'Investimento', 'qt_investimento_real', 'Prazo da Concessão', 'qt_prazo_concessao', 'Poder Concedente', 'Área', 'Areas', 'Áreas', 'Bloco', 'Conjunto', 'Estrutura', 'nm_bloco', 'nm_conjunto', 'nm_estrutura', 'Nome', 'name', 'Tipo', 'Tipo de item', 'tipo_item', 'tipo_estrutura'];
-                const ignorarChave = chave => chavesIgnoradas.some(k => normalizarTexto(k) === normalizarTexto(chave));
-                
-                const gruposInfra = agruparPropriedades(p, ignorarChave);
-                const infraPerimetroHTML = gruposInfra.size
-                    ? `<hr style="margin: 6px 0; border:0; border-top:1px solid #ccc;"><b>Informações gerais:</b>${renderizarGrupos(gruposInfra)}`
-                    : '';
+            return L
+                .geoJSON(
+                    feature
+                )
+                .getBounds()
+                .getCenter();
 
-                const infoGeralHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${equipmentIcon(featurePerimetro)} ${tituloObra}</strong></div>${separador}${listaDetalhes}${infraPerimetroHTML}<div style="text-align:center; margin-top: 8px;">${avisoItens}</div></div>`;
+        }
 
-                const camadaPerimetro = L.geoJSON(featurePerimetro, { style: { color: "#E65100", weight: 3, fillColor: "#F57C00", fillOpacity: 0.2, dashArray: "5, 5" } }).addTo(perimetrosLayer);
-                const centerType=turf.centroid(featurePerimetro).geometry.coordinates;
-                L.marker([centerType[1],centerType[0]],{icon:L.divIcon({className:'custom-type-pin',html:equipmentIcon(featurePerimetro),iconSize:[32,32],iconAnchor:[16,16]}),title:nomeLocal,alt:nomeLocal}).bindTooltip(escaparHTML(nomeLocal)).bindPopup(infoGeralHTML).addTo(perimetrosLayer);
-                // Card fixo e interativo: permanece aberto ao mover o mouse até ele.
-                const cardPerimetro = L.popup({
-                    maxWidth: 360,
-                    maxHeight: 280,
-                    autoPan: true,
-                    closeButton: true,
-                    closeOnClick: false
-                }).setContent(infoGeralHTML);
-                let mouseNoPerimetro = false;
-                let mouseNoCard = false;
-                let timerFecharCard = null;
+    }
 
-                function cancelarFechamentoCard() {
-                    clearTimeout(timerFecharCard);
-                    timerFecharCard = null;
-                }
 
-                function agendarFechamentoCard() {
-                    cancelarFechamentoCard();
-                    timerFecharCard = setTimeout(() => {
-                        timerFecharCard = null;
-                        if (!mouseNoPerimetro && !mouseNoCard) {
-                            cardPerimetro.remove();
-                        }
-                    }, 250);
-                }
+    // ========================================================
+    // REGIÕES
+    // ========================================================
 
-                function entrarNoCard() {
-                    mouseNoCard = true;
-                    cancelarFechamentoCard();
-                }
+    function renderizarRegioes() {
 
-                function sairDoCard() {
-                    mouseNoCard = false;
-                    agendarFechamentoCard();
-                }
+        atualizarLegendaTipos();
 
-                cardPerimetro.on('add', () => {
-                    const elemento = cardPerimetro.getElement();
-                    L.DomEvent.disableScrollPropagation(elemento);
-                    L.DomEvent.disableClickPropagation(elemento);
-                    // Remove antes de registrar para evitar duplicar eventos ao reabrir.
-                    L.DomEvent.off(elemento, 'mouseenter', entrarNoCard);
-                    L.DomEvent.off(elemento, 'mouseleave', sairDoCard);
-                    L.DomEvent.on(elemento, 'mouseenter', entrarNoCard);
-                    L.DomEvent.on(elemento, 'mouseleave', sairDoCard);
-                });
-                cardPerimetro.on('remove', () => {
-                    cancelarFechamentoCard();
-                    mouseNoCard = false;
-                });
-                camadaPerimetro.on('remove', cancelarFechamentoCard);
-                camadaPerimetro.eachLayer(layer => {
-                    layer.options.bubblingMouseEvents = false;
-                    layer.on('mouseover', function(e) {
-                        mouseNoPerimetro = true;
-                        cancelarFechamentoCard();
-                        if (currentState === 4 && !map.hasLayer(cardPerimetro)) {
-                            cardPerimetro.setLatLng(e.latlng).openOn(map);
-                        }
-                    });
-                    layer.on('mouseout', function() {
-                        mouseNoPerimetro = false;
-                        agendarFechamentoCard();
-                    });
-                });
-                camadaPerimetro.on('click', function(e) {
-                    L.DomEvent.stopPropagation(e);
-                    if (currentState !== 5) {
-                        avisarLocalSelecionado(nomeLocal, featurePerimetro, 'perimetro');
-                    }
-                    if (currentState === 5) {
-                        // Clicar na área do perímetro fora dos itens também volta um nível.
-                        voltarAoPerimetroAtual();
-                    } else {
-                        mostrarItensLocal();
-                    }
-                });
 
-                // Todas as divisões internas usam a mesma identidade visual:
-                // azul normalmente e laranja quando o mouse estiver sobre a área.
-                function estiloItem(f) {
-                    return {
-                        color: '#FFFFFF',
-                        weight: 1,
-                        opacity: 0.95,
-                        fillColor: '#00506E',
-                        fillOpacity: 0.48,
-                        lineJoin: 'round',
-                        lineCap: 'round',
-                        className: 'area-interna'
-                    };
-                }
+        currentState =
+            0;
 
-                function estiloItemHover(f) {
-                    return {
-                        color: '#FFFFFF',
-                        weight: 1.5,
-                        opacity: 1,
-                        fillColor: '#F08200',
-                        fillOpacity: 0.78,
-                        lineJoin: 'round',
-                        lineCap: 'round'
-                    };
-                }
 
-                // Os itens são desenhados somente após um clique no perímetro.
-                let itensExibidos = false;
-                function mostrarItensLocal() {
-                    if (itensExibidos || !temItens) return;
-                    itensExibidos = true;
-                    currentState = 5;
-                    map.closePopup();
-                    atualizarIndicadorCamada("Divisões Internas");
+        atualizarIndicadorCamada(
+            "Regiões"
+        );
 
-                    // Em Divisões Internas, o perímetro vira apenas uma moldura azul.
-                    // Assim ele não compete visualmente com Blocos / Conjuntos / Estruturas.
-                    camadaPerimetro.setStyle({
-                        color: corAzul,
-                        weight: 4,
-                        opacity: 0.95,
-                        fillOpacity: 0,
-                        dashArray: null
-                    });
 
-                    if (temItens) {
-                        L.geoJSON({ type: 'FeatureCollection', features: itensDoLocal.features.flatMap(separarAreasParaExibicao) }, {
-                            style: estiloItem,
-                            pointToLayer: (f, latlng) => L.circleMarker(latlng, { ...estiloItem(f), radius: 7 }),
-                            onEachFeature: (f, l) => {
-                                const tituloObra = escaparHTML(nomeEquipamento(f) || nomeLocal);
-                                const tituloBloco = escaparHTML(nomeItem(f));
-                                const rotuloTipo = tipoItem(f);
-                                const nomeAreaHTML = f.__nomeArea ? '<br><b>' + escaparHTML(f.__nomeArea) + '</b>' : '';
-                                l.bindTooltip(
-                                    `<b>${tituloObra}</b><br>${rotuloTipo}: ${tituloBloco}${nomeAreaHTML}`,
+        if (
+            !regioesGeoJSON
+            ||
+            !regioesGeoJSON.features
+            ||
+            regioesGeoJSON.features.length ===
+                0
+        ) {
+
+            renderizarSubprefeituras();
+
+            return;
+
+        }
+
+
+        if (
+            regioesLayer
+        ) {
+
+            map.removeLayer(
+                regioesLayer
+            );
+
+        }
+
+
+        if (
+            subprefeiturasLayer
+        ) {
+
+            map.removeLayer(
+                subprefeiturasLayer
+            );
+
+        }
+
+
+        badgesReg.clearLayers();
+        badgesSub.clearLayers();
+
+
+        regioesLayer =
+            L.geoJSON(
+                regioesGeoJSON,
+                {
+
+                    style:
+                        f =>
+                            estiloRegiao(
+                                f,
+                                'regiao'
+                            ),
+
+
+                    onEachFeature:
+                        function (
+                            feature,
+                            layer
+                        ) {
+
+                            const nomeRegiao =
+                                extrairNomeRegiao(
+                                    feature
+                                );
+
+
+                            const stats =
+                                contagemRegiao[
+                                    nomeRegiao
+                                ];
+
+
+                            layer.on(
+                                'mouseover',
+                                () =>
+                                    layer.setStyle(
+                                        estiloHover(
+                                            feature,
+                                            'regiao'
+                                        )
+                                    )
+                            );
+
+
+                            layer.on(
+                                'mouseout',
+                                () =>
+                                    regioesLayer
+                                        .resetStyle(
+                                            layer
+                                        )
+                            );
+
+
+                            if (
+                                temDadosNoLocal(
+                                    stats
+                                )
+                            ) {
+
+                                L.marker(
+                                    obterCentroInterno(
+                                        feature
+                                    ),
                                     {
-                                        sticky: true,
-                                        className: 'tooltip-area-interna',
-                                        opacity: 1
+
+                                        icon:
+                                            criarBadgeIcon(
+                                                stats
+                                            ),
+
+                                        interactive:
+                                            false
+
+                                    }
+                                )
+                                .addTo(
+                                    badgesReg
+                                );
+
+                            }
+
+
+                            layer.on(
+                                'click',
+                                function (
+                                    e
+                                ) {
+
+                                    L.DomEvent.stopPropagation(
+                                        e
+                                    );
+
+
+                                    regiaoAtual =
+                                        nomeRegiao;
+
+
+                                    boundsRegiaoAtual =
+                                        e
+                                            .target
+                                            .getBounds();
+
+
+                                    enviarAcaoParaPai(
+                                        'region-selected',
+                                        {
+                                            regiao:
+                                                nomeRegiao
+                                        }
+                                    );
+
+
+                                    map.removeLayer(
+                                        regioesLayer
+                                    );
+
+
+                                    badgesReg.removeFrom(
+                                        map
+                                    );
+
+
+                                    map.fitBounds(
+                                        boundsRegiaoAtual
+                                    );
+
+
+                                    renderizarSubprefeituras(
+                                        nomeRegiao
+                                    );
+
+                                }
+                            );
+
+
+                            if (
+                                nomeRegiao !==
+                                "Desconhecida"
+                            ) {
+
+                                layer.bindTooltip(
+                                    nomeRegiao,
+                                    {
+                                        sticky:
+                                            true
                                     }
                                 );
 
-                                // Destaca a divisão apontada em laranja.
-                                l.on('mouseover', function() {
-                                    if (l.setStyle) l.setStyle(estiloItemHover(f));
-                                    if (l.bringToFront) l.bringToFront();
-                                });
-
-                                l.on('mouseout', function() {
-                                    if (l.setStyle) l.setStyle(estiloItem(f));
-                                });
-                                
-                                const gruposInfraBloco = agruparPropriedades(f.properties, ignorarChave);
-                                const listaInfraBlocoHTML = renderizarGrupos(gruposInfraBloco)
-                                    || '<ul><li>Sem detalhamento.</li></ul>';
-    
-                                const infoBlocoHTML = `<div class="popup-blocos"><div style="text-align:center;"><strong style="color: #00506E; font-size: 14px;">${tituloObra}</strong><br><span style="display:inline-block; margin-top:2px; background:#ddd; padding:2px 5px; border-radius:4px; font-size:10px;">${rotuloTipo.toUpperCase()}: ${tituloBloco}</span>${nomeAreaHTML}</div><hr style="margin: 6px 0;"><b>Detalhes:</b>${listaInfraBlocoHTML}</div>`;
-                                l.options.bubblingMouseEvents = false;
-                                l.bindPopup(infoBlocoHTML);
-                                l.on('click', function(e) {
-                                    L.DomEvent.stopPropagation(e);
-                                    avisarLocalSelecionado(nomeLocal, f, 'divisao-interna');
-                                    enviarAcaoParaPai('internal-item-selected', {
-                                        local: nomeEquipamento(f) || nomeLocal,
-                                        grupo: grupoDaFeature(f),
-                                        tipo: rotuloTipo,
-                                        item: nomeItem(f),
-                                        area: f.__nomeArea || ''
-                                    });
-                                });
                             }
-                        }).addTo(itensLayer);
-                    }
-                    itensLayer.addTo(map);
-                    // Enquadra somente os itens selecionados, sem ampliar para o perímetro.
-                    const boundsItens = L.latLngBounds([]);
-                    itensLayer.eachLayer(camada => {
-                        if (camada.getBounds && camada.getBounds().isValid()) boundsItens.extend(camada.getBounds());
-                    });
-                    if (boundsItens.isValid()) map.fitBounds(boundsItens, { padding: [30, 30], maxZoom: 20 });
-                }
 
-                perimetrosLayer.addTo(map);
-                boundsLocalAtual = camadaPerimetro.getBounds();
-                if (abrirDiretamente && temItens) {
-                    mostrarItensLocal();
-                } else {
-                    map.fitBounds(boundsLocalAtual, { padding: [30, 30], maxZoom: 16 });
-                }
-            }
+                        }
 
-            let typeLegendBox=null;
-            function atualizarLegendaTipos(nivel='geral',valor='',locais=null){
-                const rows=(locais||geojsonPerimetros.features).filter(f=>{
-                    const district=f.properties?.distrito||'',sub=buscarSubprefeitura(district),region=buscarRegiao(sub);
-                    if(nivel==='regiao'&&valor)return sppEquals(region,valor);
-                    if(nivel==='subprefeitura'&&valor)return sppEquals(sub,valor);
-                    if(nivel==='distrito'&&valor)return sppEquals(district,valor);
-                    return true;
-                });
-                if(!typeLegendBox)return;
-                const open=typeLegendBox.querySelector('details')?.open||false;
-                const scope=valor||'Recorte atual';
-                typeLegendBox.innerHTML='<details'+(open?' open':'')+'><summary>Tipos de equipamento · '+escaparHTML(scope)+'</summary><div class="equipment-legend-list">'+equipmentLegend(rows)+'</div><p>'+rows.length+' equipamento(s) neste recorte. Classificação por parceria.</p></details>';
-            }
-            const typeLegend=L.control({position:'bottomright'});
-            typeLegend.onAdd=()=>{typeLegendBox=L.DomUtil.create('div','equipment-map-legend');atualizarLegendaTipos();L.DomEvent.disableClickPropagation(typeLegendBox);L.DomEvent.disableScrollPropagation(typeLegendBox);return typeLegendBox;};typeLegend.addTo(map);
-            const backControl=L.control({position:'topleft'});
-            backControl.onAdd=()=>{const box=L.DomUtil.create('div','leaflet-bar spp-back-control');const button=L.DomUtil.create('button','',box);button.type='button';button.textContent='←';button.title='Voltar um nível';button.setAttribute('aria-label','Voltar um nível');button.style.cssText='width:30px;height:30px;background:white;border:0;cursor:pointer;font-size:20px';L.DomEvent.disableClickPropagation(box);button.onclick=()=>map.fire('click');return box;};backControl.addTo(map);
-            map.on('click', function () {
-                enviarAcaoParaPai('map-navigation', {
-                    acao: 'voltar',
-                    estadoAnterior: currentState
-                });
-                if (currentState === 5) {
-                    // Fora dos itens: retorna somente ao perímetro, sem pular para os pins.
-                    voltarAoPerimetroAtual();
                 }
-                else if (currentState === 4) { 
-                    map.closePopup(); perimetrosLayer.clearLayers(); itensLayer.clearLayers(); 
-                    if (distritoAtual && boundsDistritoAtual) mostrarPinsDistrito(distritoAtual, boundsDistritoAtual);
-                    else renderizarSubprefeituras(regiaoAtual);
-                }
-                else if (currentState === 3) { 
-                    pinsLocais.clearLayers(); distritoSelecionadoLayer.clearLayers(); 
-                    if (subprefeituraAtual && boundsSubprefeituraAtual) { 
-                        renderizarDistritos(subprefeituraAtual); 
-                        map.fitBounds(boundsSubprefeituraAtual); 
-                    }
-                    else renderizarSubprefeituras(regiaoAtual);
-                }
-                else if (currentState === 2) { 
-                    if (distritosLayer) map.removeLayer(distritosLayer); badgesDist.clearLayers(); 
-                    if (regiaoAtual && boundsRegiaoAtual) {
-                        renderizarSubprefeituras(regiaoAtual);
-                        map.fitBounds(boundsRegiaoAtual);
-                    } else {
-                        renderizarRegioes();
-                    }
-                }
-                else if (currentState === 1) {
-                    if (subprefeiturasLayer) map.removeLayer(subprefeiturasLayer); badgesSub.clearLayers(); 
-                    renderizarRegioes();
-                    if (regioesLayer) map.fitBounds(regioesLayer.getBounds(), { padding: [0, 0] });
-                }
-                enviarAcaoParaPai('navigation-state', {nivel:currentState,
-                    regiao:currentState>=1?regiaoAtual||'':'',
-                    subprefeitura:currentState>=2?subprefeituraAtual||'':'',
-                    distrito:currentState>=3?distritoAtual||'':''});
-            });
+            )
+            .addTo(
+                map
+            );
 
-            const regsAtivas = Object.keys(contagemRegiao).filter(k => contagemRegiao[k].total > 0);
-            const subsAtivas = Object.keys(contagemSub).filter(k => contagemSub[k].total > 0);
-            const distsAtivos = Object.keys(contagemDist).filter(k => contagemDist[k].total > 0);
-            const numLocais = geojsonPerimetros.features ? geojsonPerimetros.features.length : 0;
 
-            const requestedDistrict=distritosGeoJSON.features.find(f=>sppFilters.distrito&&sppEquals(extrairNomeDistrito(f),sppFilters.distrito));
-            const requestedSub=subprefeiturasGeoJSON.features.find(f=>sppFilters.subprefeitura&&sppEquals(extrairNomeSub(f),sppFilters.subprefeitura));
-            const effectiveRegion=sppFilters.regiao||(wantedGroups.length===1?sppGroupRegion(wantedGroups[0]):'');
-            const requestedRegion=regioesGeoJSON.features.find(f=>effectiveRegion&&sppEquals(extrairNomeRegiao(f),effectiveRegion));
-            if(!numLocais){
-                renderizarRegioes();
-                if(regioesLayer)map.fitBounds(regioesLayer.getBounds());
-                atualizarIndicadorCamada('Nenhum equipamento neste recorte');
-            } else if(!wantedLocals.length&&!hasItems&&(requestedDistrict||requestedSub||requestedRegion)){
-                regiaoAtual=requestedRegion?extrairNomeRegiao(requestedRegion):requestedSub?buscarRegiao(extrairNomeSub(requestedSub)):buscarRegiao(buscarSubprefeitura(extrairNomeDistrito(requestedDistrict)));
-                const regionFeature=regioesGeoJSON.features.find(f=>sppEquals(extrairNomeRegiao(f),regiaoAtual));
-                if(regionFeature)boundsRegiaoAtual=L.geoJSON(regionFeature).getBounds();
-                subprefeituraAtual=requestedSub?extrairNomeSub(requestedSub):requestedDistrict?buscarSubprefeitura(extrairNomeDistrito(requestedDistrict)):null;
-                const subFeature=subprefeiturasGeoJSON.features.find(f=>sppEquals(extrairNomeSub(f),subprefeituraAtual));
-                if(subFeature)boundsSubprefeituraAtual=L.geoJSON(subFeature).getBounds();
-                if(requestedDistrict)mostrarPinsDistrito(extrairNomeDistrito(requestedDistrict),L.geoJSON(requestedDistrict).getBounds());
-                else if(requestedSub){renderizarDistritos(subprefeituraAtual);map.fitBounds(boundsSubprefeituraAtual);}
-                else {renderizarSubprefeituras(regiaoAtual);map.fitBounds(boundsRegiaoAtual);}
-            } else if (numLocais === 1) {
-                const featureUnica = geojsonPerimetros.features[0];
-                const nomeLocalUnico = nomeEquipamento(featureUnica) || 'Local Mapeado';
-                const distUnico = featureUnica.properties.distrito;
-                const subUnica = buscarSubprefeitura(distUnico);
-                const regUnica = buscarRegiao(subUnica);
+        badgesReg.addTo(
+            map
+        );
 
-                if (distUnico && subUnica) {
-                    regiaoAtual = regUnica; subprefeituraAtual = subUnica; distritoAtual = distUnico;
-                    if (regioesGeoJSON) {
-                        const featReg = regioesGeoJSON.features.find(x => extrairNomeRegiao(x) === regUnica);
-                        if (featReg) boundsRegiaoAtual = L.geoJSON(featReg).getBounds();
-                    }
-                    const featSub = subprefeiturasGeoJSON.features.find(x => extrairNomeSub(x) === subUnica);
-                    if (featSub) boundsSubprefeituraAtual = L.geoJSON(featSub).getBounds();
-                    const featDist = distritosGeoJSON.features.find(x => extrairNomeDistrito(x) === distUnico);
-                    if (featDist) boundsDistritoAtual = L.geoJSON(featDist).getBounds();
-                }
-                mostrarPerimetroLocal(nomeLocalUnico, featureUnica, abrirItensFiltrados);
+    }
 
-            } else if (abrirItensFiltrados && numLocais > 1) {
-                // Uma seleção pode conter itens de mais de um equipamento/grupo.
-                mostrarPerimetroLocal('Locais filtrados', geojsonPerimetros, true);
-            } else if (distsAtivos.length === 1 && numLocais > 1) {
-                const distUnico = distsAtivos[0];
-                const subUnica = buscarSubprefeitura(distUnico);
-                const regUnica = buscarRegiao(subUnica);
 
-                if (distUnico && subUnica) {
-                    regiaoAtual = regUnica; subprefeituraAtual = subUnica;
-                    const featDist = distritosGeoJSON.features.find(x => extrairNomeDistrito(x) === distUnico);
-                    if (featDist) {
-                        boundsDistritoAtual = L.geoJSON(featDist).getBounds();
-                        mostrarPinsDistrito(distUnico, boundsDistritoAtual);
-                    }
-                }
-            } else if (subsAtivas.length === 1 && distsAtivos.length > 1) {
-                const subUnica = subsAtivas[0];
-                const regUnica = buscarRegiao(subUnica);
-                regiaoAtual = regUnica; subprefeituraAtual = subUnica;
-                
-                const featSub = subprefeiturasGeoJSON.features.find(x => extrairNomeSub(x) === subUnica);
-                if (featSub) {
-                    boundsSubprefeituraAtual = L.geoJSON(featSub).getBounds();
-                    renderizarDistritos(subUnica);
-                    map.fitBounds(boundsSubprefeituraAtual);
-                }
-            } else if (regsAtivas.length === 1 && subsAtivas.length > 1) {
-                const regUnica = regsAtivas[0];
-                regiaoAtual = regUnica;
-                
-                const featReg = regioesGeoJSON.features.find(x => extrairNomeRegiao(x) === regUnica);
-                if (featReg) {
-                    boundsRegiaoAtual = L.geoJSON(featReg).getBounds();
-                    renderizarSubprefeituras(regUnica);
-                    map.fitBounds(boundsRegiaoAtual);
-                }
-            } else {
-                renderizarRegioes(); 
-                if (regioesLayer) {
-                    map.fitBounds(regioesLayer.getBounds(), { padding: [0, 0] });
-                }
-            }
+    // ========================================================
+    // SUBPREFEITURAS
+    // ========================================================
+
+    function renderizarSubprefeituras(
+        nomeRegiaoFiltro = null
+    ) {
+
+        atualizarLegendaTipos(
+            'regiao',
+            nomeRegiaoFiltro
+        );
+
+
+        currentState =
+            1;
+
+
+        atualizarIndicadorCamada(
+            nomeRegiaoFiltro
+                ?
+                `Subprefeituras (${nomeRegiaoFiltro})`
+                :
+                "Subprefeituras"
+        );
+
+
+        if (
+            subprefeiturasLayer
+        ) {
+
+            map.removeLayer(
+                subprefeiturasLayer
+            );
+
         }
+
+
+        if (
+            distritosLayer
+        ) {
+
+            map.removeLayer(
+                distritosLayer
+            );
+
+        }
+
+
+        badgesSub.clearLayers();
+        badgesDist.clearLayers();
+
+
+        subprefeiturasLayer =
+            L.geoJSON(
+                subprefeiturasGeoJSON,
+                {
+
+                    filter:
+                        f => {
+
+                            if (
+                                !nomeRegiaoFiltro
+                            ) {
+                                return true;
+                            }
+
+
+                            const reg =
+                                f.properties.regiao;
+
+
+                            if (
+                                !reg
+                                ||
+                                reg ===
+                                    "Desconhecida"
+                            ) {
+                                return false;
+                            }
+
+
+                            return (
+                                reg
+                                    .toLowerCase()
+                                    .includes(
+                                        nomeRegiaoFiltro
+                                            .toLowerCase()
+                                    )
+                                ||
+                                nomeRegiaoFiltro
+                                    .toLowerCase()
+                                    .includes(
+                                        reg.toLowerCase()
+                                    )
+                            );
+
+                        },
+
+
+                    style:
+                        f =>
+                            estiloRegiao(
+                                f,
+                                'subprefeitura'
+                            ),
+
+
+                    onEachFeature:
+                        function (
+                            feature,
+                            layer
+                        ) {
+
+                            const nomeSub =
+                                extrairNomeSub(
+                                    feature
+                                );
+
+
+                            const stats =
+                                contagemSub[
+                                    nomeSub
+                                ];
+
+
+                            layer.on(
+                                'mouseover',
+                                () =>
+                                    layer.setStyle(
+                                        estiloHover(
+                                            feature,
+                                            'subprefeitura'
+                                        )
+                                    )
+                            );
+
+
+                            layer.on(
+                                'mouseout',
+                                () =>
+                                    subprefeiturasLayer
+                                        .resetStyle(
+                                            layer
+                                        )
+                            );
+
+
+                            if (
+                                temDadosNoLocal(
+                                    stats
+                                )
+                            ) {
+
+                                L.marker(
+                                    obterCentroInterno(
+                                        feature
+                                    ),
+                                    {
+
+                                        icon:
+                                            criarBadgeIcon(
+                                                stats
+                                            ),
+
+                                        interactive:
+                                            false
+
+                                    }
+                                )
+                                .addTo(
+                                    badgesSub
+                                );
+
+                            }
+
+
+                            layer.on(
+                                'click',
+                                function (
+                                    e
+                                ) {
+
+                                    L.DomEvent.stopPropagation(
+                                        e
+                                    );
+
+
+                                    subprefeituraAtual =
+                                        nomeSub;
+
+
+                                    boundsSubprefeituraAtual =
+                                        e
+                                            .target
+                                            .getBounds();
+
+
+                                    enviarAcaoParaPai(
+                                        'subprefeitura-selected',
+                                        {
+
+                                            subprefeitura:
+                                                nomeSub,
+
+                                            regiao:
+                                                regiaoAtual
+                                                ||
+                                                ''
+
+                                        }
+                                    );
+
+
+                                    map.removeLayer(
+                                        subprefeiturasLayer
+                                    );
+
+
+                                    badgesSub.removeFrom(
+                                        map
+                                    );
+
+
+                                    map.fitBounds(
+                                        boundsSubprefeituraAtual
+                                    );
+
+
+                                    renderizarDistritos(
+                                        nomeSub
+                                    );
+
+                                }
+                            );
+
+
+                            layer.bindTooltip(
+                                nomeSub,
+                                {
+                                    sticky:
+                                        true
+                                }
+                            );
+
+                        }
+
+                }
+            )
+            .addTo(
+                map
+            );
+
+
+        badgesSub.addTo(
+            map
+        );
+
+    }
+
+
+    // ========================================================
+    // DISTRITOS
+    // ========================================================
+
+    function renderizarDistritos(
+        nomeSubClicada = null
+    ) {
+
+        atualizarLegendaTipos(
+            nomeSubClicada
+                ?
+                'subprefeitura'
+                :
+                'geral',
+
+            nomeSubClicada
+            ||
+            ''
+        );
+
+
+        currentState =
+            2;
+
+
+        atualizarIndicadorCamada(
+            nomeSubClicada
+                ?
+                `Distritos (${nomeSubClicada})`
+                :
+                'Distritos'
+        );
+
+
+        if (
+            distritosLayer
+        ) {
+
+            map.removeLayer(
+                distritosLayer
+            );
+
+        }
+
+
+        badgesDist.clearLayers();
+
+
+        distritosLayer =
+            L.geoJSON(
+                distritosGeoJSON,
+                {
+
+                    filter:
+                        f => {
+
+                            if (
+                                !nomeSubClicada
+                            ) {
+                                return true;
+                            }
+
+
+                            const subF =
+                                f
+                                    .properties
+                                    .subprefeitura;
+
+
+                            return (
+                                subF
+                                &&
+                                subF
+                                    .toLowerCase()
+                                ===
+                                nomeSubClicada
+                                    .toLowerCase()
+                            );
+
+                        },
+
+
+                    style:
+                        f =>
+                            estiloRegiao(
+                                f,
+                                'distrito'
+                            ),
+
+
+                    onEachFeature:
+                        function (
+                            feature,
+                            layer
+                        ) {
+
+                            const nomeDistrito =
+                                extrairNomeDistrito(
+                                    feature
+                                );
+
+
+                            const subDoDistrito =
+                                feature
+                                    .properties
+                                    .subprefeitura
+                                ||
+                                buscarSubprefeitura(
+                                    nomeDistrito
+                                );
+
+
+                            const stats =
+                                contagemDist[
+                                    nomeDistrito
+                                ];
+
+
+                            layer.on(
+                                'mouseover',
+                                () =>
+                                    layer.setStyle(
+                                        estiloHover(
+                                            feature,
+                                            'distrito'
+                                        )
+                                    )
+                            );
+
+
+                            layer.on(
+                                'mouseout',
+                                () =>
+                                    distritosLayer
+                                        .resetStyle(
+                                            layer
+                                        )
+                            );
+
+
+                            if (
+                                temDadosNoLocal(
+                                    stats
+                                )
+                            ) {
+
+                                L.marker(
+                                    obterCentroInterno(
+                                        feature
+                                    ),
+                                    {
+
+                                        icon:
+                                            criarBadgeIcon(
+                                                stats
+                                            ),
+
+                                        interactive:
+                                            false
+
+                                    }
+                                )
+                                .addTo(
+                                    badgesDist
+                                );
+
+                            }
+
+
+                            layer.on(
+                                'click',
+                                function (
+                                    e
+                                ) {
+
+                                    L.DomEvent.stopPropagation(
+                                        e
+                                    );
+
+
+                                    subprefeituraAtual =
+                                        subDoDistrito;
+
+
+                                    distritoAtual =
+                                        nomeDistrito;
+
+
+                                    boundsDistritoAtual =
+                                        e
+                                            .target
+                                            .getBounds();
+
+
+                                    enviarAcaoParaPai(
+                                        'district-selected',
+                                        {
+
+                                            distrito:
+                                                nomeDistrito,
+
+                                            subprefeitura:
+                                                subDoDistrito
+                                                ||
+                                                '',
+
+                                            regiao:
+                                                regiaoAtual
+                                                ||
+                                                ''
+
+                                        }
+                                    );
+
+
+                                    if (
+                                        temDadosNoLocal(
+                                            stats
+                                        )
+                                    ) {
+
+                                        mostrarPinsDistrito(
+                                            nomeDistrito,
+                                            boundsDistritoAtual
+                                        );
+
+                                    }
+                                    else {
+
+                                        map.fitBounds(
+                                            boundsDistritoAtual
+                                        );
+
+                                    }
+
+                                }
+                            );
+
+
+                            layer.bindTooltip(
+                                nomeDistrito,
+                                {
+                                    sticky:
+                                        true
+                                }
+                            );
+
+                        }
+
+                }
+            )
+            .addTo(
+                map
+            );
+
+
+        badgesDist.addTo(
+            map
+        );
+
+    }
+
+
+    // ========================================================
+    // PINS / LOCAIS
+    // ========================================================
+
+    function mostrarPinsDistrito(
+        nomeDistrito,
+        boundsDistrito
+    ) {
+
+        atualizarLegendaTipos(
+            'distrito',
+            nomeDistrito
+        );
+
+
+        currentState =
+            3;
+
+
+        distritoAtual =
+            nomeDistrito;
+
+
+        boundsDistritoAtual =
+            boundsDistrito;
+
+
+        atualizarIndicadorCamada(
+            `Locais (${nomeDistrito})`
+        );
+
+
+        if (
+            distritosLayer
+        ) {
+
+            map.removeLayer(
+                distritosLayer
+            );
+
+        }
+
+
+        badgesDist.removeFrom(
+            map
+        );
+
+
+        distritoSelecionadoLayer.clearLayers();
+        pinsLocais.clearLayers();
+        perimetrosLayer.clearLayers();
+        itensLayer.clearLayers();
+
+
+        map.closePopup();
+
+
+        const featDistrito =
+            distritosGeoJSON
+                .features
+                .find(
+                    f =>
+                        extrairNomeDistrito(
+                            f
+                        )
+                        ===
+                        nomeDistrito
+                );
+
+
+        if (
+            featDistrito
+        ) {
+
+            L.geoJSON(
+                featDistrito,
+                {
+
+                    style: {
+
+                        color:
+                            corAzul,
+
+                        weight:
+                            1.5,
+
+                        fillColor:
+                            corAzul,
+
+                        fillOpacity:
+                            0.1,
+
+                        dashArray:
+                            "4, 4"
+
+                    },
+
+                    interactive:
+                        false
+
+                }
+            )
+            .addTo(
+                distritoSelecionadoLayer
+            );
+
+        }
+
+
+        distritoSelecionadoLayer.addTo(
+            map
+        );
+
+
+        map.fitBounds(
+            boundsDistrito
+        );
+
+
+        const typeIcon =
+            f =>
+                L.divIcon(
+                    {
+
+                        className:
+                            'custom-type-pin',
+
+                        html:
+                            equipmentIcon(
+                                f
+                            ),
+
+                        iconSize:
+                            [
+                                32,
+                                32
+                            ],
+
+                        iconAnchor:
+                            [
+                                16,
+                                16
+                            ],
+
+                        tooltipAnchor:
+                            [
+                                0,
+                                -18
+                            ]
+
+                    }
+                );
+
+
+        geojsonPerimetros
+            .features
+            .filter(
+                f =>
+                    f.properties.distrito ===
+                    nomeDistrito
+            )
+            .forEach(
+                f => {
+
+                    const centroid =
+                        turf
+                            .centroid(
+                                f
+                            )
+                            .geometry
+                            .coordinates;
+
+
+                    const nomeLocal =
+                        nomeEquipamento(
+                            f
+                        )
+                        ||
+                        'Local Mapeado';
+
+
+                    const marker =
+                        L.marker(
+                            [
+                                centroid[1],
+                                centroid[0]
+                            ],
+                            {
+
+                                icon:
+                                    typeIcon(
+                                        f
+                                    ),
+
+                                title:
+                                    nomeLocal,
+
+                                alt:
+                                    nomeLocal
+
+                            }
+                        );
+
+
+                    marker.bindTooltip(
+                        escaparHTML(
+                            nomeLocal
+                        ),
+                        {
+
+                            permanent:
+                                false,
+
+                            direction:
+                                'top',
+
+                            className:
+                                'tooltip-hover-local'
+
+                        }
+                    );
+
+
+                    marker.on(
+                        'click',
+                        function (
+                            e
+                        ) {
+
+                            L.DomEvent.stopPropagation(
+                                e
+                            );
+
+
+                            avisarLocalSelecionado(
+                                nomeLocal,
+                                f,
+                                'pin'
+                            );
+
+
+                            mostrarPerimetroLocal(
+                                nomeLocal,
+                                f
+                            );
+
+                        }
+                    );
+
+
+                    marker.addTo(
+                        pinsLocais
+                    );
+
+                }
+            );
+
+
+        pinsLocais.addTo(
+            map
+        );
+
+    }
+
+
+    // ========================================================
+    // PERÍMETRO INDIVIDUAL
+    // ========================================================
+
+    function mostrarPerimetroLocal(
+        nomeLocal,
+        featurePerimetro,
+        abrirDiretamente = false
+    ) {
+
+        atualizarLegendaTipos(
+            'local',
+            nomeLocal,
+            featurePerimetro.type ===
+                'FeatureCollection'
+                ?
+                featurePerimetro.features
+                :
+                [
+                    featurePerimetro
+                ]
+        );
+
+
+        voltarAoPerimetroAtual =
+            () =>
+                mostrarPerimetroLocal(
+                    nomeLocal,
+                    featurePerimetro
+                );
+
+
+        currentState =
+            4;
+
+
+        atualizarIndicadorCamada(
+            `Perímetro (${escaparHTML(nomeLocal)})`
+        );
+
+
+        pinsLocais.removeFrom(
+            map
+        );
+
+
+        perimetrosLayer.clearLayers();
+        itensLayer.clearLayers();
+
+
+        map.closePopup();
+
+
+        const perimetrosDoLocal =
+            featurePerimetro.type ===
+                'FeatureCollection'
+                ?
+                featurePerimetro.features
+                :
+                [
+                    featurePerimetro
+                ];
+
+
+        const itensDoLocal = {
+
+            type:
+                'FeatureCollection',
+
+            features:
+                (
+                    geojsonItens.features
+                    ||
+                    []
+                )
+                .filter(
+                    f =>
+                        perimetrosDoLocal.some(
+                            perimetro =>
+                                pertenceAoEquipamento(
+                                    f,
+                                    perimetro
+                                )
+                        )
+                )
+
+        };
+
+
+        const temItens =
+            itensDoLocal
+                .features
+                .length >
+            0;
+
+
+        const camadaPerimetro =
+            L.geoJSON(
+                featurePerimetro,
+                {
+
+                    style: {
+
+                        color:
+                            "#E65100",
+
+                        weight:
+                            3,
+
+                        fillColor:
+                            "#F57C00",
+
+                        fillOpacity:
+                            0.2,
+
+                        dashArray:
+                            "5, 5"
+
+                    }
+
+                }
+            )
+            .addTo(
+                perimetrosLayer
+            );
+
+
+        // ====================================================
+        // DIVISÕES INTERNAS
+        // ====================================================
+
+        let itensExibidos =
+            false;
+
+
+        function mostrarItensLocal() {
+
+            if (
+                itensExibidos
+                ||
+                !temItens
+            ) {
+                return;
+            }
+
+
+            itensExibidos =
+                true;
+
+
+            currentState =
+                5;
+
+
+            map.closePopup();
+
+
+            atualizarIndicadorCamada(
+                "Divisões Internas"
+            );
+
+
+            camadaPerimetro.setStyle(
+                {
+
+                    color:
+                        corAzul,
+
+                    weight:
+                        4,
+
+                    opacity:
+                        0.95,
+
+                    fillOpacity:
+                        0,
+
+                    dashArray:
+                        null
+
+                }
+            );
+
+
+            L.geoJSON(
+                {
+
+                    type:
+                        'FeatureCollection',
+
+                    features:
+                        itensDoLocal
+                            .features
+                            .flatMap(
+                                separarAreasParaExibicao
+                            )
+
+                },
+                {
+
+                    style:
+                        () => ({
+
+                            color:
+                                '#FFFFFF',
+
+                            weight:
+                                1,
+
+                            opacity:
+                                0.95,
+
+                            fillColor:
+                                '#00506E',
+
+                            fillOpacity:
+                                0.48
+
+                        }),
+
+
+                    pointToLayer:
+                        (
+                            f,
+                            latlng
+                        ) =>
+                            L.circleMarker(
+                                latlng,
+                                {
+
+                                    color:
+                                        '#FFFFFF',
+
+                                    weight:
+                                        1,
+
+                                    fillColor:
+                                        '#00506E',
+
+                                    fillOpacity:
+                                        0.48,
+
+                                    radius:
+                                        7
+
+                                }
+                            ),
+
+
+                    onEachFeature:
+                        (
+                            f,
+                            layer
+                        ) => {
+
+                            const titulo =
+                                nomeItem(
+                                    f
+                                );
+
+
+                            layer.bindTooltip(
+                                `
+                                    <b>
+                                        ${escaparHTML(nomeLocal)}
+                                    </b>
+
+                                    <br>
+
+                                    ${escaparHTML(tipoItem(f))}:
+                                    ${escaparHTML(titulo)}
+                                `,
+                                {
+
+                                    sticky:
+                                        true,
+
+                                    className:
+                                        'tooltip-area-interna'
+
+                                }
+                            );
+
+
+                            layer.on(
+                                'mouseover',
+                                function () {
+
+                                    if (
+                                        this.setStyle
+                                    ) {
+
+                                        this.setStyle(
+                                            {
+
+                                                fillColor:
+                                                    '#F08200',
+
+                                                fillOpacity:
+                                                    0.78
+
+                                            }
+                                        );
+
+                                    }
+
+                                }
+                            );
+
+
+                            layer.on(
+                                'mouseout',
+                                function () {
+
+                                    if (
+                                        this.setStyle
+                                    ) {
+
+                                        this.setStyle(
+                                            {
+
+                                                fillColor:
+                                                    '#00506E',
+
+                                                fillOpacity:
+                                                    0.48
+
+                                            }
+                                        );
+
+                                    }
+
+                                }
+                            );
+
+                        }
+
+                }
+            )
+            .addTo(
+                itensLayer
+            );
+
+
+            itensLayer.addTo(
+                map
+            );
+
+
+            const boundsItens =
+                L.latLngBounds(
+                    []
+                );
+
+
+            itensLayer.eachLayer(
+                camada => {
+
+                    if (
+                        camada.getBounds
+                        &&
+                        camada
+                            .getBounds()
+                            .isValid()
+                    ) {
+
+                        boundsItens.extend(
+                            camada.getBounds()
+                        );
+
+                    }
+
+                }
+            );
+
+
+            if (
+                boundsItens.isValid()
+            ) {
+
+                map.fitBounds(
+                    boundsItens,
+                    {
+
+                        padding:
+                            [
+                                30,
+                                30
+                            ],
+
+                        maxZoom:
+                            20
+
+                    }
+                );
+
+            }
+
+        }
+
+
+        camadaPerimetro.on(
+            'click',
+            function (
+                e
+            ) {
+
+                L.DomEvent.stopPropagation(
+                    e
+                );
+
+
+                avisarLocalSelecionado(
+                    nomeLocal,
+                    featurePerimetro,
+                    'perimetro'
+                );
+
+
+                mostrarItensLocal();
+
+            }
+        );
+
+
+        perimetrosLayer.addTo(
+            map
+        );
+
+
+        boundsLocalAtual =
+            camadaPerimetro.getBounds();
+
+
+        if (
+            abrirDiretamente
+            &&
+            temItens
+        ) {
+
+            mostrarItensLocal();
+
+        }
+        else {
+
+            map.fitBounds(
+                boundsLocalAtual,
+                {
+
+                    padding:
+                        [
+                            30,
+                            30
+                        ],
+
+                    maxZoom:
+                        16
+
+                }
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // LIMPEZA DE CAMADAS PARA SALTO DIRETO
+    // ========================================================
+
+    function limparCamadasParaNivelDireto() {
+
+        map.closePopup();
+
+
+        if (
+            regioesLayer
+            &&
+            map.hasLayer(
+                regioesLayer
+            )
+        ) {
+
+            map.removeLayer(
+                regioesLayer
+            );
+
+        }
+
+
+        if (
+            subprefeiturasLayer
+            &&
+            map.hasLayer(
+                subprefeiturasLayer
+            )
+        ) {
+
+            map.removeLayer(
+                subprefeiturasLayer
+            );
+
+        }
+
+
+        if (
+            distritosLayer
+            &&
+            map.hasLayer(
+                distritosLayer
+            )
+        ) {
+
+            map.removeLayer(
+                distritosLayer
+            );
+
+        }
+
+
+        if (
+            map.hasLayer(
+                distritoSelecionadoLayer
+            )
+        ) {
+
+            map.removeLayer(
+                distritoSelecionadoLayer
+            );
+
+        }
+
+
+        badgesReg.clearLayers();
+        badgesSub.clearLayers();
+        badgesDist.clearLayers();
+
+
+        pinsLocais.clearLayers();
+        perimetrosLayer.clearLayers();
+        itensLayer.clearLayers();
+        distritoSelecionadoLayer.clearLayers();
+
+    }
+
+
+    // ========================================================
+    // NÍVEL LOCAL DIRETO
+    // ========================================================
+
+    function mostrarLocaisFiltradosDireto(
+        features
+    ) {
+
+        if (
+            !features
+            ||
+            !features.length
+        ) {
+            return;
+        }
+
+
+        limparCamadasParaNivelDireto();
+
+
+        currentState =
+            3;
+
+
+        atualizarIndicadorCamada(
+            features.length ===
+                1
+                ?
+                "Local"
+                :
+                `Locais (${features.length})`
+        );
+
+
+        const icon =
+            feature =>
+                L.divIcon(
+                    {
+
+                        className:
+                            'custom-type-pin',
+
+                        html:
+                            equipmentIcon(
+                                feature
+                            ),
+
+                        iconSize:
+                            [
+                                32,
+                                32
+                            ],
+
+                        iconAnchor:
+                            [
+                                16,
+                                16
+                            ]
+
+                    }
+                );
+
+
+        features.forEach(
+            feature => {
+
+                const centro =
+                    turf
+                        .centroid(
+                            feature
+                        )
+                        .geometry
+                        .coordinates;
+
+
+                const nome =
+                    nomeEquipamento(
+                        feature
+                    )
+                    ||
+                    "Local Mapeado";
+
+
+                const marker =
+                    L.marker(
+                        [
+                            centro[1],
+                            centro[0]
+                        ],
+                        {
+                            icon:
+                                icon(
+                                    feature
+                                )
+                        }
+                    );
+
+
+                marker.bindTooltip(
+                    escaparHTML(
+                        nome
+                    )
+                );
+
+
+                marker.on(
+                    "click",
+                    e => {
+
+                        L.DomEvent.stopPropagation(
+                            e
+                        );
+
+
+                        mostrarPerimetroLocal(
+                            nome,
+                            feature
+                        );
+
+                    }
+                );
+
+
+                marker.addTo(
+                    pinsLocais
+                );
+
+            }
+        );
+
+
+        pinsLocais.addTo(
+            map
+        );
+
+
+        const bounds =
+            L.geoJSON(
+                {
+
+                    type:
+                        "FeatureCollection",
+
+                    features
+
+                }
+            )
+            .getBounds();
+
+
+        if (
+            bounds.isValid()
+        ) {
+
+            map.fitBounds(
+                bounds,
+                {
+
+                    padding:
+                        [
+                            40,
+                            40
+                        ],
+
+                    maxZoom:
+                        15
+
+                }
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // NÍVEL PERÍMETRO DIRETO
+    // ========================================================
+
+    function mostrarPerimetrosFiltradosDireto(
+        features
+    ) {
+
+        if (
+            !features
+            ||
+            !features.length
+        ) {
+            return;
+        }
+
+
+        limparCamadasParaNivelDireto();
+
+
+        currentState =
+            4;
+
+
+        voltarAoPerimetroAtual =
+            () =>
+                mostrarPerimetrosFiltradosDireto(
+                    features
+                );
+
+
+        atualizarIndicadorCamada(
+            features.length ===
+                1
+                ?
+                "Perímetro"
+                :
+                `Perímetros (${features.length})`
+        );
+
+
+        const camada =
+            L.geoJSON(
+                {
+
+                    type:
+                        "FeatureCollection",
+
+                    features
+
+                },
+                {
+
+                    style:
+                        () => ({
+
+                            color:
+                                "#00506E",
+
+                            weight:
+                                2.5,
+
+                            opacity:
+                                1,
+
+                            fillColor:
+                                "#3B7D95",
+
+                            fillOpacity:
+                                0.12
+
+                        }),
+
+
+                    onEachFeature:
+                        (
+                            feature,
+                            layer
+                        ) => {
+
+                            const nome =
+                                nomeEquipamento(
+                                    feature
+                                )
+                                ||
+                                "Equipamento";
+
+
+                            layer.bindTooltip(
+                                escaparHTML(
+                                    nome
+                                ),
+                                {
+                                    sticky:
+                                        true
+                                }
+                            );
+
+
+                            layer.on(
+                                "mouseover",
+                                function () {
+
+                                    this.setStyle(
+                                        {
+
+                                            color:
+                                                "#F08200",
+
+                                            fillColor:
+                                                "#F08200",
+
+                                            fillOpacity:
+                                                0.18
+
+                                        }
+                                    );
+
+                                }
+                            );
+
+
+                            layer.on(
+                                "mouseout",
+                                function () {
+
+                                    this.setStyle(
+                                        {
+
+                                            color:
+                                                "#00506E",
+
+                                            fillColor:
+                                                "#3B7D95",
+
+                                            fillOpacity:
+                                                0.12
+
+                                        }
+                                    );
+
+                                }
+                            );
+
+
+                            layer.on(
+                                "click",
+                                e => {
+
+                                    L.DomEvent.stopPropagation(
+                                        e
+                                    );
+
+
+                                    mostrarPerimetroLocal(
+                                        nome,
+                                        feature
+                                    );
+
+                                }
+                            );
+
+                        }
+
+                }
+            );
+
+
+        camada.addTo(
+            perimetrosLayer
+        );
+
+
+        perimetrosLayer.addTo(
+            map
+        );
+
+
+        const bounds =
+            camada.getBounds();
+
+
+        if (
+            bounds.isValid()
+        ) {
+
+            boundsLocalAtual =
+                bounds;
+
+
+            map.fitBounds(
+                bounds,
+                {
+
+                    padding:
+                        [
+                            40,
+                            40
+                        ],
+
+                    maxZoom:
+                        16
+
+                }
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // NÍVEL INTERNO DIRETO
+    // ========================================================
+
+    function mostrarDivisoesInternasDireto(
+        features
+    ) {
+
+        if (
+            !features
+            ||
+            !features.length
+        ) {
+            return;
+        }
+
+
+        if (
+            features.length !==
+            1
+        ) {
+
+            mostrarPerimetrosFiltradosDireto(
+                features
+            );
+
+
+            return;
+
+        }
+
+
+        const feature =
+            features[0];
+
+
+        mostrarPerimetroLocal(
+            nomeEquipamento(
+                feature
+            )
+            ||
+            "Local Mapeado",
+            feature,
+            true
+        );
+
+    }
+
+
+    // ========================================================
+    // LEGENDA
+    // ========================================================
+
+    let typeLegendBox =
+        null;
+
+
+    function atualizarLegendaTipos(
+        nivel = 'geral',
+        valor = '',
+        locais = null
+    ) {
+
+        const rows =
+            (
+                locais
+                ||
+                geojsonPerimetros.features
+            )
+            .filter(
+                f => {
+
+                    const district =
+                        f.properties?.distrito
+                        ||
+                        '';
+
+
+                    const sub =
+                        buscarSubprefeitura(
+                            district
+                        );
+
+
+                    const region =
+                        buscarRegiao(
+                            sub
+                        );
+
+
+                    if (
+                        nivel ===
+                            'regiao'
+                        &&
+                        valor
+                    ) {
+
+                        return sppEquals(
+                            region,
+                            valor
+                        );
+
+                    }
+
+
+                    if (
+                        nivel ===
+                            'subprefeitura'
+                        &&
+                        valor
+                    ) {
+
+                        return sppEquals(
+                            sub,
+                            valor
+                        );
+
+                    }
+
+
+                    if (
+                        nivel ===
+                            'distrito'
+                        &&
+                        valor
+                    ) {
+
+                        return sppEquals(
+                            district,
+                            valor
+                        );
+
+                    }
+
+
+                    return true;
+
+                }
+            );
+
+
+        if (
+            !typeLegendBox
+        ) {
+            return;
+        }
+
+
+        const scope =
+            valor
+            ||
+            'Recorte atual';
+
+
+        typeLegendBox.innerHTML =
+            `
+                <details>
+
+                    <summary>
+                        Tipos de equipamento ·
+                        ${escaparHTML(scope)}
+                    </summary>
+
+                    <div class="equipment-legend-list">
+
+                        ${equipmentLegend(rows)}
+
+                    </div>
+
+                    <p>
+                        ${rows.length}
+                        equipamento(s) neste recorte.
+                    </p>
+
+                </details>
+            `;
+
+    }
+
+
+    const typeLegend =
+        L.control(
+            {
+                position:
+                    'bottomright'
+            }
+        );
+
+
+    typeLegend.onAdd =
+        () => {
+
+            typeLegendBox =
+                L.DomUtil.create(
+                    'div',
+                    'equipment-map-legend'
+                );
+
+
+            atualizarLegendaTipos();
+
+
+            return typeLegendBox;
+
+        };
+
+
+    typeLegend.addTo(
+        map
+    );
+
+
+    // ========================================================
+    // CONTROLE VOLTAR
+    // ========================================================
+
+    const backControl =
+        L.control(
+            {
+                position:
+                    'topleft'
+            }
+        );
+
+
+    backControl.onAdd =
+        () => {
+
+            const box =
+                L.DomUtil.create(
+                    'div',
+                    'leaflet-bar spp-back-control'
+                );
+
+
+            const button =
+                L.DomUtil.create(
+                    'button',
+                    '',
+                    box
+                );
+
+
+            button.type =
+                'button';
+
+
+            button.textContent =
+                '←';
+
+
+            button.onclick =
+                () =>
+                    map.fire(
+                        'click'
+                    );
+
+
+            return box;
+
+        };
+
+
+    backControl.addTo(
+        map
+    );
+
+
+    // ========================================================
+    // NÍVEIS ATIVOS
+    // ========================================================
+
+    const regsAtivas =
+        Object
+            .keys(
+                contagemRegiao
+            )
+            .filter(
+                key =>
+                    contagemRegiao[
+                        key
+                    ].total >
+                    0
+            );
+
+
+    const subsAtivas =
+        Object
+            .keys(
+                contagemSub
+            )
+            .filter(
+                key =>
+                    contagemSub[
+                        key
+                    ].total >
+                    0
+            );
+
+
+    const distsAtivos =
+        Object
+            .keys(
+                contagemDist
+            )
+            .filter(
+                key =>
+                    contagemDist[
+                        key
+                    ].total >
+                    0
+            );
+
+
+    const numLocais =
+        geojsonPerimetros.features
+            ?
+            geojsonPerimetros
+                .features
+                .length
+            :
+            0;
+
+
+    const requestedDistrict =
+        distritosGeoJSON
+            .features
+            .find(
+                f =>
+                    sppFilters.distrito
+                    &&
+                    sppEquals(
+                        extrairNomeDistrito(
+                            f
+                        ),
+                        sppFilters.distrito
+                    )
+            );
+
+
+    const requestedSub =
+        subprefeiturasGeoJSON
+            .features
+            .find(
+                f =>
+                    sppFilters.subprefeitura
+                    &&
+                    sppEquals(
+                        extrairNomeSub(
+                            f
+                        ),
+                        sppFilters.subprefeitura
+                    )
+            );
+
+
+    const effectiveRegion =
+        sppFilters.regiao
+        ||
+        (
+            wantedGroups.length ===
+                1
+                ?
+                sppGroupRegion(
+                    wantedGroups[
+                        0
+                    ]
+                )
+                :
+                ''
+        );
+
+
+    // ========================================================
+    // ROTEADOR DE NÍVEIS
+    // ========================================================
+
+    function aplicarNivelInicialSolicitado() {
+
+        if (
+            !nivelInicialURL
+        ) {
+            return false;
+        }
+
+
+        if (
+            nivelInicialURL ===
+            'regiao'
+        ) {
+
+            renderizarRegioes();
+
+            return true;
+
+        }
+
+
+        if (
+            nivelInicialURL ===
+            'subprefeitura'
+        ) {
+
+            const regiao =
+                sppFilters.regiao
+                ||
+                (
+                    regsAtivas.length ===
+                        1
+                        ?
+                        regsAtivas[
+                            0
+                        ]
+                        :
+                        effectiveRegion
+                )
+                ||
+                null;
+
+
+            regiaoAtual =
+                regiao;
+
+
+            renderizarSubprefeituras(
+                regiao
+            );
+
+
+            return true;
+
+        }
+
+
+        if (
+            nivelInicialURL ===
+            'distrito'
+        ) {
+
+            const sub =
+                sppFilters.subprefeitura
+                ||
+                (
+                    subsAtivas.length ===
+                        1
+                        ?
+                        subsAtivas[
+                            0
+                        ]
+                        :
+                        null
+                );
+
+
+            subprefeituraAtual =
+                sub;
+
+
+            renderizarDistritos(
+                sub
+            );
+
+
+            return true;
+
+        }
+
+
+        if (
+            nivelInicialURL ===
+            'local'
+        ) {
+
+            if (
+                !numLocais
+            ) {
+                return false;
+            }
+
+
+            mostrarLocaisFiltradosDireto(
+                geojsonPerimetros.features
+            );
+
+
+            return true;
+
+        }
+
+
+        if (
+            nivelInicialURL ===
+            'perimetro'
+        ) {
+
+            if (
+                !numLocais
+            ) {
+                return false;
+            }
+
+
+            mostrarPerimetrosFiltradosDireto(
+                geojsonPerimetros.features
+            );
+
+
+            return true;
+
+        }
+
+
+        if (
+            nivelInicialURL ===
+            'interno'
+        ) {
+
+            if (
+                !numLocais
+            ) {
+                return false;
+            }
+
+
+            mostrarDivisoesInternasDireto(
+                geojsonPerimetros.features
+            );
+
+
+            return true;
+
+        }
+
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // EXECUÇÃO INICIAL
+    // ========================================================
+
+    const nivelAplicado =
+        aplicarNivelInicialSolicitado();
+
+
+    if (
+        !nivelAplicado
+    ) {
+
+        if (
+            !numLocais
+        ) {
+
+            renderizarRegioes();
+
+        }
+        else if (
+            numLocais ===
+            1
+        ) {
+
+            const feature =
+                geojsonPerimetros
+                    .features[
+                        0
+                    ];
+
+
+            mostrarPerimetroLocal(
+                nomeEquipamento(
+                    feature
+                )
+                ||
+                'Local Mapeado',
+                feature,
+                abrirItensFiltrados
+            );
+
+        }
+        else if (
+            distsAtivos.length ===
+            1
+        ) {
+
+            const dist =
+                distsAtivos[
+                    0
+                ];
+
+
+            const featureDistrito =
+                distritosGeoJSON
+                    .features
+                    .find(
+                        f =>
+                            extrairNomeDistrito(
+                                f
+                            )
+                            ===
+                            dist
+                    );
+
+
+            if (
+                featureDistrito
+            ) {
+
+                mostrarPinsDistrito(
+                    dist,
+                    L.geoJSON(
+                        featureDistrito
+                    ).getBounds()
+                );
+
+            }
+
+        }
+        else if (
+            subsAtivas.length ===
+            1
+        ) {
+
+            renderizarDistritos(
+                subsAtivas[
+                    0
+                ]
+            );
+
+        }
+        else if (
+            regsAtivas.length ===
+            1
+        ) {
+
+            renderizarSubprefeituras(
+                regsAtivas[
+                    0
+                ]
+            );
+
+        }
+        else {
+
+            renderizarRegioes();
+
+        }
+
+    }
+
+}
