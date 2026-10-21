@@ -1,0 +1,208 @@
+{
+  "versao": 1,
+  "grupos": [
+    {
+      "codigo": "anhangabau",
+      "nome": "Vale do Anhangabaú",
+      "categoria": "Espaços Urbanos",
+      "ativo": true,
+      "tipo": "publicspace",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "anhembi",
+      "nome": "Complexo do Anhembi",
+      "categoria": "Equipamentos",
+      "ativo": true,
+      "tipo": "events",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "baixoantartica",
+      "nome": "Baixo do Viaduto Antártica",
+      "categoria": "Baixos de Viaduto",
+      "ativo": true,
+      "tipo": "publicspace",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "baixolapa",
+      "nome": "Baixo do Viaduto Lapa",
+      "categoria": "Baixos de Viaduto",
+      "ativo": true,
+      "tipo": "publicspace",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "baixopompeia",
+      "nome": "Baixo do Viaduto Pompéia",
+      "categoria": "Baixos de Viaduto",
+      "ativo": true,
+      "tipo": "publicspace",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "cemb1consolare",
+      "nome": "Cemitérios - Bloco 1 / Consolare",
+      "categoria": "Cemitérios",
+      "ativo": true,
+      "tipo": "cemetery",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "cemb2cortel",
+      "nome": "Cemitérios - Bloco 2 / Cortel",
+      "categoria": "Cemitérios",
+      "ativo": true,
+      "tipo": "cemetery",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "cemb3maya",
+      "nome": "Cemitérios - Bloco 3 / Maya",
+      "categoria": "Cemitérios",
+      "ativo": true,
+      "tipo": "cemetery",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "cemb4velar",
+      "nome": "Cemitérios - Bloco 4 / Velar",
+      "categoria": "Cemitérios",
+      "ativo": true,
+      "tipo": "cemetery",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "ceus1",
+      "nome": "CEUs 1",
+      "categoria": "Educação",
+      "ativo": true,
+      "tipo": "education",
+      "arquivos": [
+        "perimetros.geojson",
+        "blocos.geojson"
+      ]
+    },
+    {
+      "codigo": "ceus2",
+      "nome": "CEUs 2",
+      "categoria": "Educação",
+      "ativo": true,
+      "tipo": "education",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "dompedro",
+      "nome": "Dom Pedro",
+      "categoria": "Terminais",
+      "ativo": true,
+      "tipo": "housing",
+      "arquivos": [
+        "perimetros.geojson",
+        "conjuntos.geojson"
+      ]
+    },
+    {
+      "codigo": "mercadopaulistanokinjo",
+      "nome": "Mercado Paulistano / Kinjo",
+      "categoria": "Mercados",
+      "ativo": true,
+      "tipo": "market",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "mercadosantoamaro",
+      "nome": "Mercado de Santo Amaro",
+      "categoria": "Mercados",
+      "ativo": true,
+      "tipo": "market",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "pacaembu",
+      "nome": "Pacaembu",
+      "categoria": "Equipamentos",
+      "ativo": true,
+      "tipo": "sport",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "parques1",
+      "nome": "Parques 1",
+      "categoria": "Parques",
+      "ativo": true,
+      "tipo": "park",
+      "arquivos": [
+        "perimetros.geojson",
+        "estruturas.geojson"
+      ]
+    },
+    {
+      "codigo": "parques3",
+      "nome": "Parques 3",
+      "categoria": "Parques",
+      "ativo": true,
+      "tipo": "park",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "termleste",
+      "nome": "Terminais Leste",
+      "categoria": "Terminais",
+      "ativo": true,
+      "tipo": "terminal",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "termnoroeste",
+      "nome": "Terminais Noroeste",
+      "categoria": "Terminais",
+      "ativo": true,
+      "tipo": "terminal",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
+      "codigo": "termsul",
+      "nome": "Terminais Sul",
+      "categoria": "Terminais",
+      "ativo": true,
+      "tipo": "terminal",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    }
+  ]
+}

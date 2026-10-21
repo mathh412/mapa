@@ -528,9 +528,10 @@ Exemplo:
 grupos/ceus1/
 ```
 
-O arquivo obrigatório é:
+Os arquivos obrigatórios são:
 
 ```text
+config.json
 perimetros.geojson
 ```
 
@@ -643,49 +644,44 @@ Exemplo:
 
 ---
 
-## Como adicionar uma nova parceria
+## Catálogo central e novas parcerias
 
-Crie:
+O mapa é a fonte única de parcerias. Os dois projetos consomem `grupos/catalogo.json`, gerado a partir dos `config.json`. Não edite o catálogo gerado nem cadastre parcerias no JavaScript do dashboard.
 
-```text
-grupos/novogrupo/
-```
+1. Crie `grupos/novaparceria/config.json`:
 
-Adicione:
-
-```text
-grupos/novogrupo/perimetros.geojson
-```
-
-Caso existam divisões internas:
-
-```text
-grupos/novogrupo/blocos.geojson
-grupos/novogrupo/conjuntos.geojson
-grupos/novogrupo/estruturas.geojson
-```
-
-O grupo passa a poder ser chamado pela URL:
-
-```text
-?grupo=novogrupo
-```
-
-Se o grupo também precisar aparecer no `DASHBOARD_SOCIAL`, ele deve ser adicionado ao catálogo:
-
-```text
-DASHBOARD_SOCIAL/js/parcerias.js
-```
-
-Exemplo:
-
-```javascript
-novogrupo: {
-    nome: "Nova Parceria",
-    arquivo: `${URL_BASE_MAPA}/novogrupo/perimetros.geojson`,
-    categoria: "Categoria"
+```json
+{
+  "codigo": "novaparceria",
+  "nome": "Nova Parceria",
+  "categoria": "Equipamentos",
+  "ativo": true,
+  "tipo": "unknown"
 }
 ```
+
+2. Adicione `perimetros.geojson` (FeatureCollection com pelo menos um equipamento para grupos ativos). Cada equipamento é uma Feature; use MultiPolygon para áreas separadas do mesmo equipamento. Preserve `Equipamento` e `distrito` nas propriedades e o vínculo das divisões internas.
+3. Se existirem, adicione `blocos.geojson`, `conjuntos.geojson` e/ou `estruturas.geojson`.
+4. Com Node.js 22 ou superior, execute na raiz do mapa:
+
+```sh
+node scripts/gerar-catalogo.mjs
+node scripts/gerar-catalogo.mjs --check
+```
+
+O código deve coincidir com o nome da pasta e usar letras minúsculas, números, hífen ou sublinhado. `nome`, `categoria` e `ativo` são obrigatórios. `ativo: false` retira a parceria das duas aplicações após publicação. O campo opcional `tipo` escolhe o ícone: education, park, terminal, market, sport, cemetery, events, publicspace, housing ou unknown. Os tipos atuais foram preservados.
+
+O gerador valida os JSONs e a estrutura básica dos GeoJSONs, lista os arquivos existentes em `arquivos` e produz saída determinística (sem datas variáveis). Não substitui uma validação topológica de polígonos. Pastas sem config, códigos divergentes e arquivos inválidos interrompem a geração. O mapa só solicita os arquivos listados, evitando 404 de opcionais ausentes. Catálogo e dados do mapa são lidos do mesmo site, permitindo testes locais por HTTP.
+
+### Atualização automática e publicação
+
+O workflow `.github/workflows/atualizar-catalogo.yml` executa na branch `main` quando mudam grupos, gerador, workflow ou arquivos do site, e também permite execução manual. Ele gera e valida o catálogo, salva apenas o catálogo quando mudou e publica o site completo no GitHub Pages. Não força push: se a branch avançar durante a execução, o push falha e deve-se executar novamente sobre a versão atual.
+
+Antes de ativar esse fluxo, configure **Settings → Pages → Source → GitHub Actions**, permita ao workflow escrita em Contents e confira as regras da branch main e do ambiente github-pages. Regras que impedem commits do bot precisam ser compatibilizadas pelo mantenedor; não são contornadas pelo workflow.
+
+O deploy ocorre explicitamente porque commits feitos com GITHUB_TOKEN não disparam outra compilação do Pages. Referências: [origem de publicação](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site) e [workflows de Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+
+Publique o mapa e o catálogo antes de publicar a versão do dashboard que passa a consumi-lo. Depois, novas parcerias exigem alterações somente neste repositório. Elas aparecem no dashboard ao recarregar a página após a atualização do catálogo remoto; caches do provedor podem atrasar a propagação. Filtros de grupo na URL continuam limitando quais parcerias aparecem.
 
 ---
 
@@ -797,7 +793,7 @@ Ao alterar o projeto:
 - preserve os nomes dos arquivos GeoJSON;
 - preserve o parâmetro `Equipamento` utilizado para relacionamento;
 - utilize `MultiPolygon` quando um equipamento possuir áreas separadas;
-- mantenha os nomes de grupo compatíveis com `DASHBOARD_SOCIAL/js/parcerias.js`;
+- mantenha codigo e pasta consistentes e regenere `grupos/catalogo.json`;
 - teste URLs com e sem `nivel_travado`;
 - valide o mapa standalone e em modo `embed`.
 

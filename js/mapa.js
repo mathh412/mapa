@@ -249,28 +249,7 @@ function equipmentLegend(rows) {
 // FILTROS
 // ============================================================
 
-const SPP_ALL_GROUPS = [
-    'anhangabau',
-    'anhembi',
-    'baixoantartica',
-    'baixolapa',
-    'baixopompeia',
-    'cemb1consolare',
-    'cemb2cortel',
-    'cemb3maya',
-    'cemb4velar',
-    'ceus1',
-    'ceus2',
-    'dompedro',
-    'mercadopaulistanokinjo',
-    'mercadosantoamaro',
-    'pacaembu',
-    'parques1',
-    'parques3',
-    'termleste',
-    'termnoroeste',
-    'termsul'
-];
+// A lista de grupos vem exclusivamente de grupos/catalogo.json.
 
 
 const sppPlural = {
@@ -1956,41 +1935,24 @@ function itemAtendeFiltros(
 // CARREGAMENTO DOS GEOJSON
 // ============================================================
 
+async function carregarMapa() {
 try {
-
-    const urlParams =
-        new URLSearchParams(
-            window.location.search
-        );
-
-
-    const grupos = [
-        ...new Set(
-            [
-                ...SPP_ALL_GROUPS,
-
-                ...sppList(
-                    sppFilters.grupo
-                )
-                .filter(
-                    grupo =>
-                        grupo !==
-                            'todos'
-                        &&
-                        !sppGroupRegion(
-                            grupo
-                        )
-                        &&
-                        /^[a-z0-9_-]+$/
-                            .test(
-                                grupo
-                            )
-                )
-            ]
-        )
-    ];
-
-
+    const baseUrl = new URL('./', document.baseURI).href;
+    const respostaCatalogo = await fetch(new URL('grupos/catalogo.json', baseUrl), { cache: 'no-cache' });
+    if (!respostaCatalogo.ok) throw new Error('Não foi possível carregar o catálogo de parcerias.');
+    const catalogo = await respostaCatalogo.json();
+    if (catalogo.versao !== 1 || !Array.isArray(catalogo.grupos)) {
+        throw new Error('Formato de catálogo inválido.');
+    }
+    const gruposCatalogo = new Map();
+    for (const entrada of catalogo.grupos) {
+        if (!entrada || !/^[a-z0-9][a-z0-9_-]*$/.test(entrada.codigo)
+            || typeof entrada.ativo !== 'boolean' || !Array.isArray(entrada.arquivos)
+            || gruposCatalogo.has(entrada.codigo)) throw new Error('Grupo inválido no catálogo.');
+        gruposCatalogo.set(entrada.codigo, entrada);
+        if (EQUIPMENT_TYPES[entrada.tipo]) EQUIPMENT_GROUP_TYPES[entrada.codigo] = entrada.tipo;
+    }
+    const grupos = [...gruposCatalogo.values()].filter(g => g.ativo).map(g => g.codigo);
     const locaisFiltrados =
         [];
 
@@ -2021,8 +1983,6 @@ try {
             );
 
 
-    const baseUrl =
-        'https://raw.githubusercontent.com/mathh412/mapa/refs/heads/main/';
 
 
     const urlRegioes =
@@ -2107,7 +2067,10 @@ try {
         arquivo,
         tipo = null
     ) {
-
+        // Arquivos opcionais ausentes não geram requisições HTTP.
+        if (!gruposCatalogo.get(grupo).arquivos.includes(arquivo)) {
+            return { type: 'FeatureCollection', features: [] };
+        }
         const geo =
             await fetchSeguro(
                 baseUrl
@@ -2238,7 +2201,7 @@ try {
         );
 
 
-    Promise
+    await Promise
         .all(
             [
 
@@ -2510,6 +2473,10 @@ catch (
 
 }
 
+
+}
+
+carregarMapa();
 
 // ============================================================
 // SISTEMA DO MAPA
