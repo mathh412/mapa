@@ -3490,6 +3490,31 @@ function inicializarSistema(
             )
         );
 
+    const nivelTravado =
+    Boolean(
+        nivelInicialURL
+    )
+    &&
+    [
+        '1',
+        'true',
+        'sim',
+        'yes',
+        'on'
+    ]
+    .includes(
+        normalizarTexto(
+            new URLSearchParams(
+                window.location.search
+            )
+            .get(
+                'nivel_travado'
+            )
+            ||
+            ''
+        )
+    );
+
 
     abrirItensFiltrados =
         hasItems;
@@ -4308,7 +4333,8 @@ function inicializarSistema(
                                         e
                                     );
 
-
+                                    if (nivelTravado) {return;}
+                                    
                                     regiaoAtual =
                                         nomeRegiao;
 
@@ -4569,7 +4595,8 @@ function inicializarSistema(
                                         e
                                     );
 
-
+                                    if (nivelTravado) {return;}
+                                    
                                     subprefeituraAtual =
                                         nomeSub;
 
@@ -4822,7 +4849,8 @@ function inicializarSistema(
                                         e
                                     );
 
-
+                                    if (nivelTravado) {return;}
+                                    
                                     subprefeituraAtual =
                                         subDoDistrito;
 
@@ -5139,7 +5167,8 @@ function inicializarSistema(
                                 e
                             );
 
-
+                            if (nivelTravado) {return;}
+                            
                             avisarLocalSelecionado(
                                 nomeLocal,
                                 f,
@@ -5608,7 +5637,8 @@ function inicializarSistema(
                 e
             );
 
-
+            if(nivelTravado) {return;}
+            
             avisarLocalSelecionado(
                 nomeLocal,
                 featurePerimetro,
@@ -5855,7 +5885,8 @@ function inicializarSistema(
                             e
                         );
 
-
+                        if(nivelTravado){return;}
+                        
                         mostrarPerimetroLocal(
                             nome,
                             feature
@@ -6133,7 +6164,8 @@ function inicializarSistema(
                                     event
                                 );
 
-
+                                if(nivelTravado) {return;}
+                                
                                 avisarLocalSelecionado(
                                     nome,
                                     feature,
@@ -6481,11 +6513,11 @@ function inicializarSistema(
 
         };
 
-
-    backControl.addTo(
-        map
-    );
-
+    if(!nivelTravado){
+        backControl.addTo(
+            map
+        );
+    }
 
     // ========================================================
     // NÍVEIS ATIVOS
