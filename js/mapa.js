@@ -5894,210 +5894,272 @@ function inicializarSistema(
     // ========================================================
 
     function mostrarPerimetrosFiltradosDireto(
-        features
+    features
+) {
+
+    if (
+        !features
+        ||
+        !features.length
+    ) {
+        return;
+    }
+
+
+    limparCamadasParaNivelDireto();
+
+
+    currentState =
+        4;
+
+
+    voltarAoPerimetroAtual =
+        () =>
+            mostrarPerimetrosFiltradosDireto(
+                features
+            );
+
+
+    atualizarIndicadorCamada(
+        features.length === 1
+            ?
+            "Perímetro"
+            :
+            `Perímetros (${features.length})`
+    );
+
+
+    const camada =
+        L.geoJSON(
+            {
+                type:
+                    "FeatureCollection",
+
+                features
+            },
+            {
+
+                style:
+                    () => ({
+
+                        color:
+                            "#E65100",
+
+                        weight:
+                            3,
+
+                        opacity:
+                            1,
+
+                        fillColor:
+                            "#F57C00",
+
+                        fillOpacity:
+                            0.18,
+
+                        lineJoin:
+                            "round",
+
+                        lineCap:
+                            "round"
+
+                    }),
+
+
+                onEachFeature:
+                    (
+                        feature,
+                        layer
+                    ) => {
+
+                        const nome =
+                            nomeEquipamento(
+                                feature
+                            )
+                            ||
+                            "Equipamento";
+
+
+                        layer.bindTooltip(
+                            escaparHTML(
+                                nome
+                            ),
+                            {
+                                sticky:
+                                    true,
+
+                                direction:
+                                    "top",
+
+                                className:
+                                    "tooltip-hover-local"
+                            }
+                        );
+
+
+                        // =====================================
+                        // HOVER
+                        // =====================================
+
+                        layer.on(
+                            "mouseover",
+                            function () {
+
+                                this.setStyle(
+                                    {
+
+                                        color:
+                                            "#BF360C",
+
+                                        weight:
+                                            4,
+
+                                        opacity:
+                                            1,
+
+                                        fillColor:
+                                            "#EF6C00",
+
+                                        fillOpacity:
+                                            0.28
+
+                                    }
+                                );
+
+                            }
+                        );
+
+
+                        // =====================================
+                        // VOLTAR AO ESTILO NORMAL
+                        // =====================================
+
+                        layer.on(
+                            "mouseout",
+                            function () {
+
+                                this.setStyle(
+                                    {
+
+                                        color:
+                                            "#E65100",
+
+                                        weight:
+                                            3,
+
+                                        opacity:
+                                            1,
+
+                                        fillColor:
+                                            "#F57C00",
+
+                                        fillOpacity:
+                                            0.18
+
+                                    }
+                                );
+
+                            }
+                        );
+
+
+                        // =====================================
+                        // ABRIR EQUIPAMENTO
+                        // =====================================
+
+                        layer.on(
+                            "click",
+                            function (
+                                event
+                            ) {
+
+                                L.DomEvent.stopPropagation(
+                                    event
+                                );
+
+
+                                avisarLocalSelecionado(
+                                    nome,
+                                    feature,
+                                    "perimetro"
+                                );
+
+
+                                mostrarPerimetroLocal(
+                                    nome,
+                                    feature,
+                                    false
+                                );
+
+                            }
+                        );
+
+                    }
+
+            }
+        );
+
+
+    camada.addTo(
+        perimetrosLayer
+    );
+
+
+    perimetrosLayer.addTo(
+        map
+    );
+
+
+    // ========================================================
+    // ENQUADRAMENTO
+    // ========================================================
+
+    const bounds =
+        camada.getBounds();
+
+
+    if (
+        bounds.isValid()
     ) {
 
-        if (
-            !features
-            ||
-            !features.length
-        ) {
-            return;
-        }
+        boundsLocalAtual =
+            bounds;
 
 
-        limparCamadasParaNivelDireto();
+        map.fitBounds(
+            bounds,
+            {
 
+                padding:
+                    [
+                        40,
+                        40
+                    ],
 
-        currentState =
-            4;
+                maxZoom:
+                    16
 
-
-        voltarAoPerimetroAtual =
-            () =>
-                mostrarPerimetrosFiltradosDireto(
-                    features
-                );
-
-
-        atualizarIndicadorCamada(
-            features.length ===
-                1
-                ?
-                "Perímetro"
-                :
-                `Perímetros (${features.length})`
+            }
         );
-
-
-        const camada =
-            L.geoJSON(
-                {
-
-                    type:
-                        "FeatureCollection",
-
-                    features
-
-                },
-                {
-
-                    style:
-                        () => ({
-
-                            color:
-                                "#00506E",
-
-                            weight:
-                                2.5,
-
-                            opacity:
-                                1,
-
-                            fillColor:
-                                "#3B7D95",
-
-                            fillOpacity:
-                                0.12
-
-                        }),
-
-
-                    onEachFeature:
-                        (
-                            feature,
-                            layer
-                        ) => {
-
-                            const nome =
-                                nomeEquipamento(
-                                    feature
-                                )
-                                ||
-                                "Equipamento";
-
-
-                            layer.bindTooltip(
-                                escaparHTML(
-                                    nome
-                                ),
-                                {
-                                    sticky:
-                                        true
-                                }
-                            );
-
-
-                            layer.on(
-                                "mouseover",
-                                function () {
-
-                                    this.setStyle(
-                                        {
-
-                                            color:
-                                                "#F08200",
-
-                                            fillColor:
-                                                "#F08200",
-
-                                            fillOpacity:
-                                                0.18
-
-                                        }
-                                    );
-
-                                }
-                            );
-
-
-                            layer.on(
-                                "mouseout",
-                                function () {
-
-                                    this.setStyle(
-                                        {
-
-                                            color:
-                                                "#00506E",
-
-                                            fillColor:
-                                                "#3B7D95",
-
-                                            fillOpacity:
-                                                0.12
-
-                                        }
-                                    );
-
-                                }
-                            );
-
-
-                            layer.on(
-                                "click",
-                                e => {
-
-                                    L.DomEvent.stopPropagation(
-                                        e
-                                    );
-
-
-                                    mostrarPerimetroLocal(
-                                        nome,
-                                        feature
-                                    );
-
-                                }
-                            );
-
-                        }
-
-                }
-            );
-
-
-        camada.addTo(
-            perimetrosLayer
-        );
-
-
-        perimetrosLayer.addTo(
-            map
-        );
-
-
-        const bounds =
-            camada.getBounds();
-
-
-        if (
-            bounds.isValid()
-        ) {
-
-            boundsLocalAtual =
-                bounds;
-
-
-            map.fitBounds(
-                bounds,
-                {
-
-                    padding:
-                        [
-                            40,
-                            40
-                        ],
-
-                    maxZoom:
-                        16
-
-                }
-            );
-
-        }
 
     }
+
+
+    atualizarLegendaTipos(
+        "local",
+
+        features.length === 1
+            ?
+            nomeEquipamento(
+                features[0]
+            )
+            :
+            "Equipamentos filtrados",
+
+        features
+    );
+
+}
 
 
     // ========================================================
