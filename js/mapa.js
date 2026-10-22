@@ -6419,6 +6419,9 @@ function inicializarSistema(
                 );
 
 
+            // Cliques na legenda pertencem ao controle, não à navegação do mapa.
+            L.DomEvent.disableClickPropagation(typeLegendBox);
+
             atualizarLegendaTipos();
 
 
@@ -6435,6 +6438,41 @@ function inicializarSistema(
     // ========================================================
     // CONTROLE VOLTAR
     // ========================================================
+
+    // Restore the return navigation shared by the back button and map background.
+    function voltarCamada() {
+        if (nivelTravado || currentState <= 0) return;
+        const estadoAnterior = currentState;
+        enviarAcaoParaPai('map-navigation', { estadoAnterior });
+        map.closePopup();
+        switch (estadoAnterior) {
+            case 5:
+                if (typeof voltarAoPerimetroAtual === 'function') voltarAoPerimetroAtual();
+                else mostrarPerimetrosFiltradosDireto(geojsonPerimetros.features);
+                break;
+            case 4:
+                if (distritoAtual && boundsDistritoAtual) mostrarPinsDistrito(distritoAtual, boundsDistritoAtual);
+                else mostrarLocaisFiltradosDireto(geojsonPerimetros.features);
+                break;
+            case 3:
+                renderizarDistritos(subprefeituraAtual);
+                if (boundsSubprefeituraAtual) map.fitBounds(boundsSubprefeituraAtual);
+                break;
+            case 2:
+                renderizarSubprefeituras(regiaoAtual);
+                if (boundsRegiaoAtual) map.fitBounds(boundsRegiaoAtual);
+                break;
+            case 1:
+                renderizarRegioes();
+                if (regioesGeoJSON && regioesGeoJSON.features.length) {
+                    const bounds = L.geoJSON(regioesGeoJSON).getBounds();
+                    if (bounds.isValid()) map.fitBounds(bounds);
+                }
+                break;
+        }
+    }
+    map.on('click', voltarCamada);
+
 
     const backControl =
         L.control(
