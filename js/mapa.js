@@ -679,7 +679,7 @@ function enviarAcaoParaPai(
 
         window.parent.postMessage(
             mensagem,
-            SPP_PARENT_ORIGIN
+            "*"
         );
 
     }
@@ -805,6 +805,8 @@ window.addEventListener(
             &&
             event.origin !==
                 SPP_PARENT_ORIGIN
+            &&
+            event.origin !== "null"
         ) {
             return;
         }

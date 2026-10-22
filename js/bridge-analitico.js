@@ -706,6 +706,8 @@
                 origemPai !== "*"
                 &&
                 event.origin !== origemPai
+                &&
+                event.origin !== "null"
             ) {
                 return;
             }
