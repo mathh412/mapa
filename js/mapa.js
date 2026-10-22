@@ -4154,6 +4154,21 @@ function inicializarSistema(
     // REGIÕES
     // ========================================================
 
+    // Enquadra as regiões no tamanho real do iframe, em vez do zoom fixo inicial.
+    function enquadrarRegioes() {
+        if (currentState !== 0 || !regioesLayer) return;
+        const bounds = regioesLayer.getBounds();
+        const size = map.getSize();
+        if (!bounds.isValid() || size.x <= 0 || size.y <= 0) return;
+        map.fitBounds(bounds, {
+            paddingTopLeft: [24, 72],
+            paddingBottomRight: [24, 64],
+            maxZoom: 10,
+            animate: false
+        });
+    }
+    map.on('resize', enquadrarRegioes);
+
     function renderizarRegioes() {
 
         atualizarLegendaTipos();
@@ -4373,6 +4388,9 @@ function inicializarSistema(
         badgesReg.addTo(
             map
         );
+
+        map.invalidateSize({ pan: false });
+        enquadrarRegioes();
 
     }
 
@@ -6464,10 +6482,7 @@ function inicializarSistema(
                 break;
             case 1:
                 renderizarRegioes();
-                if (regioesGeoJSON && regioesGeoJSON.features.length) {
-                    const bounds = L.geoJSON(regioesGeoJSON).getBounds();
-                    if (bounds.isValid()) map.fitBounds(bounds);
-                }
+
                 break;
         }
     }
