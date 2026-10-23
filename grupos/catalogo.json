@@ -52,6 +52,16 @@
       ]
     },
     {
+      "codigo": "campomarte",
+      "nome": "Parque Campo de Marte",
+      "categoria": "Parques",
+      "ativo": true,
+      "tipo": "park",
+      "arquivos": [
+        "perimetros.geojson"
+      ]
+    },
+    {
       "codigo": "cemb1consolare",
       "nome": "Cemitérios - Bloco 1 / Consolare",
       "categoria": "Cemitérios",
@@ -121,6 +131,16 @@
       "arquivos": [
         "perimetros.geojson",
         "conjuntos.geojson"
+      ]
+    },
+    {
+      "codigo": "esplanada",
+      "nome": "Esplanada Liberdade",
+      "categoria": "Espaços Urbanos",
+      "ativo": true,
+      "tipo": "publicspace",
+      "arquivos": [
+        "perimetros.geojson"
       ]
     },
     {
